@@ -2,6 +2,8 @@
 
 Portable SEO audit skill for agents. Designed for `Cursor`, `Agent Skills`-compatible clients, and OpenClaw-style workflows.
 
+Russian guide: [README.ru.md](README.ru.md)
+
 This repository contains **one thing**: a reusable skill package that runs crawl-based SEO audits with separate Google and Yandex checks and produces JSON + Markdown deliverables.
 
 ## What It Is
