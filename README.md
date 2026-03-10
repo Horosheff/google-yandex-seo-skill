@@ -6,6 +6,90 @@ Russian guide: [README.ru.md](README.ru.md)
 
 This repository contains **one thing**: a reusable skill package that runs crawl-based SEO audits with separate Google and Yandex checks and produces JSON + Markdown deliverables.
 
+## Описание На Русском
+
+Этот репозиторий содержит только один продукт: self-contained SEO skill для Cursor и других agent skill-совместимых клиентов.
+
+Репозиторий нужен для запуска crawl-аудита сайта с отдельными проверками под `Google` и `Yandex`. На выходе skill создает:
+
+- Markdown-отчет для человека
+- JSON-артефакт для агента или последующей обработки
+- scoring по техническим, on-page, engine-specific и performance сигналам
+
+Важно: это не агентская платформа, не dashboard и не полный SaaS-продукт. Здесь лежит только skill со встроенными скриптами и runtime.
+
+## Схема Работы
+
+```mermaid
+flowchart TD
+    A[Пользователь или агент] --> B[SKILL.md]
+    B --> C[scripts/run-audit.js]
+    C --> D[lib/index.js]
+    D --> E[crawler.js]
+    D --> F[parsers/html-parser.js]
+    D --> G[checks/technical.js]
+    D --> H[checks/on-page.js]
+    D --> I[checks/google.js]
+    D --> J[checks/yandex.js]
+    D --> K[checks/performance.js]
+    D --> L[scoring.js]
+    D --> M[reporters/markdown.js]
+    D --> N[reporters/json.js]
+    E --> O[HTML, robots.txt, sitemap, links]
+    F --> P[title, description, headings, links, images, schema]
+    G --> Q[SEO findings]
+    H --> Q
+    I --> Q
+    J --> Q
+    K --> Q
+    L --> R[Score и grade]
+    M --> S[seo-audit-*.md]
+    N --> T[seo-audit-*.json]
+```
+
+## Как Работает Репозиторий
+
+1. Агент читает `.agents/skills/indexlift-seo-auditor/SKILL.md` и понимает, когда использовать skill.
+2. Запускается `scripts/run-audit.js` с параметрами `--url`, `--tier`, `--engines`, `--output`.
+3. `scripts/lib/crawler.js` обходит сайт, проверяет `robots.txt`, sitemap и внутренние ссылки.
+4. `scripts/lib/parsers/html-parser.js` извлекает SEO-данные из HTML.
+5. Модули в `scripts/lib/checks/` формируют список проблем и сигналов для Google, Yandex, technical SEO, on-page и performance.
+6. `scripts/lib/scoring.js` считает итоговый score и категорийные оценки.
+7. `scripts/lib/reporters/` сохраняет финальные результаты в `.md` и `.json`.
+
+## Быстрый Старт По-Русски
+
+```bash
+cd .agents/skills/indexlift-seo-auditor
+npm install
+node scripts/run-audit.js --url "https://example.com" --tier standard --engines google,yandex --output ./deliverables/
+```
+
+## Что Где Лежит
+
+```text
+.agents/
+  skills/
+    indexlift-seo-auditor/
+      package.json
+      SKILL.md
+      scripts/
+        run-audit.js
+        lib/
+          crawler.js
+          index.js
+          scoring.js
+          checks/
+          parsers/
+          reporters/
+      references/
+        install.md
+        checks.md
+README.md
+README.ru.md
+LICENSE
+```
+
 ## What It Is
 
 `IndexLift SEO Auditor` is a skill-first package, not an agent platform.
