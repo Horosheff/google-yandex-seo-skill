@@ -186,3 +186,9 @@ This repository is ready to be published as a GitHub repository for:
 ## License
 
 [MIT](LICENSE)
+
+---
+
+Создано для того, чтобы автоматизировать рутину и вернуть время на творчество!
+
+💬 Связь с разработчиком и обновления: [@maya_pro](https://t.me/maya_pro)
