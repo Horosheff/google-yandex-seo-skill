@@ -1,5 +1,7 @@
 # IndexLift SEO Auditor
 
+![IndexLift SEO Auditor Cover](.github-assets/IndexLift-SEO-Auditor.png)
+
 Portable `SEO + GEO` audit skill for agents. Designed for `Cursor`, `Agent Skills`-compatible clients, and OpenClaw-style workflows.
 
 Russian guide: [README.ru.md](README.ru.md)
