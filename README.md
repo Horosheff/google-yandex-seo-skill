@@ -180,7 +180,7 @@ or copy it into the client’s skills directory if your runtime expects a custom
 - Single-page technical SEO: HTTPS, response status, redirects, canonicals, directives, mixed content, page weight
 - Single-page on-page SEO: title, description, headings, word count, opening-copy clarity, paragraph quality, heading repetition, image alt text, lazy loading, internal anchors, social metadata
 - Google-specific signals: canonical alignment, JSON-LD validity, viewport, structured/preview coverage, contextual hreflang note
-- Yandex-specific signals: canonical consistency, markup coverage, markup validity, document size, contextual robots/sitemap note
+- Yandex-specific signals: crawl guidance strength, canonical consistency, snippet readiness, Russian-language targeting, regional relevance, mobile readiness, markup coverage/validity, business visibility, legal transparency, commercial completeness, behavioral proxies, and document size
 - Lightweight performance signals: HTML timing, HTML weight, asset count, script pressure, image pressure
 - Lightweight business heuristics: phone/email visibility, messenger links, forms/buttons, and trust markers in parsed HTML
 - Lightweight GEO heuristics: answer-first intros, question-led structure, FAQ/HowTo and entity schema, author/date/reference signals, chunkable sections, and GEO-specific priorities

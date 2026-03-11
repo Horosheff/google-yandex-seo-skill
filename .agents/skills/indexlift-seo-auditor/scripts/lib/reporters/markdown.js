@@ -456,6 +456,28 @@ function renderGeoMissing(findings) {
     : '- No major GEO gaps were highlighted by the current HTML-only checks.';
 }
 
+function renderYandexWhyNot100(findings) {
+  const yandexGaps = findings.filter(
+    (finding) =>
+      finding.category === 'engine' &&
+      finding.engines?.includes('yandex') &&
+      finding.scope !== 'context' &&
+      (finding.status === 'WARN' || finding.status === 'FAIL')
+  );
+
+  if (yandexGaps.length === 0) {
+    return '1. No major page-level Yandex blockers were detected by the current checks.';
+  }
+
+  return yandexGaps
+    .slice(0, 6)
+    .map(
+      (finding, index) =>
+        `${index + 1}. **${finding.title}** - ${finding.recommendation || finding.details}`
+    )
+    .join('\n');
+}
+
 export function renderMarkdownReport(auditResult) {
   const { metadata, scores, findings, pageSnapshot } = auditResult;
   const critical = groupByStatus(findings, 'FAIL');
@@ -511,6 +533,9 @@ ${scores.overall.confidence_reason}
 | Engine | Score | Grade |
 |---|---|---|
 ${engineBreakdown || '| N/A | 100/100 | A |'}
+
+## Why Yandex Is Not 100/100
+${metadata.engines.includes('yandex') ? renderYandexWhyNot100(findings) : '1. Yandex analysis was not requested for this audit.'}
 
 ## Client Summary
 The audited page returned status **${pageSnapshot?.status ?? 'N/A'}**, responded in **${pageSnapshot?.response_time_ms ?? 'N/A'} ms**, and currently scores **${scores.overall.score}/100** overall.

@@ -243,6 +243,29 @@ function buildGeoPriorities(auditResult) {
   return priorities.slice(0, 5);
 }
 
+function buildYandexSummary(auditResult) {
+  const yandexFindings = auditResult.findings.filter(
+    (finding) =>
+      finding.category === 'engine' &&
+      Array.isArray(finding.engines) &&
+      finding.engines.includes('yandex')
+  );
+
+  return {
+    score: auditResult.scores.engines?.yandex?.score ?? null,
+    grade: auditResult.scores.engines?.yandex?.grade ?? null,
+    blockers: yandexFindings
+      .filter((finding) => finding.scope !== 'context' && (finding.status === 'WARN' || finding.status === 'FAIL'))
+      .slice(0, 8)
+      .map((finding) => ({
+        id: finding.id,
+        title: finding.title,
+        status: finding.status,
+        recommendation: finding.recommendation,
+      })),
+  };
+}
+
 export function renderJsonArtifact(auditResult) {
   const issues = topIssues(auditResult.findings, 50);
   return {
@@ -264,6 +287,7 @@ export function renderJsonArtifact(auditResult) {
     not_measured: notMeasuredCapabilities(),
     crawl: auditResult.crawlSummary,
     page_snapshot: auditResult.pageSnapshot,
+    yandex_summary: buildYandexSummary(auditResult),
     geo_summary: buildGeoSummary(auditResult),
     geo_signals: auditResult.pageSnapshot?.geo_signals || null,
     evidence_samples: evidenceSamples(auditResult),

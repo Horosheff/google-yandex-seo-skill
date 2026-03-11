@@ -40,6 +40,7 @@ This skill runs an ultra-detailed single-page SEO audit by default and produces:
 - lightweight local-business heuristics such as contact reachability, messenger presence, conversion paths, and trust markers
 - a business-oriented priority layer that highlights what to fix first for more leads and stronger trust
 - a lightweight GEO layer that highlights what already helps AI answer engines, what is missing, and what to fix first
+- a deeper Yandex layer that explains regional, commercial, legal, markup, and behavioral gaps instead of over-rewarding basic technical presence
 
 ## Quick Start
 

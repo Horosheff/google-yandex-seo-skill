@@ -55,14 +55,22 @@
 
 ## Yandex-Specific
 
+- crawl guidance strength from `robots.txt` and sitemap together
 - robots availability
 - sitemap availability
 - canonical consistency
+- snippet readiness from title and meta description
+- Russian-language targeting clarity
+- regional signal strength for Russian-market targeting
+- mobile viewport presence
 - markup or preview metadata availability
 - markup completeness heuristics
 - JSON-LD validity
-- local/business signal visibility
-- document size limit check
+- local/business signal visibility depth
+- legal and transparency footprint for commercial pages
+- overall commercial completeness for Yandex
+- behavioral-quality proxies based on first screen, structure, and HTML friction
+- document size limit check with practical warning thresholds before the hard limit
 
 ## Performance Signals
 

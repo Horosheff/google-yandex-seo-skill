@@ -20,6 +20,17 @@ const REFERENCE_PATTERN =
 const QUESTION_HEADING_PATTERN = /(\?|как|что|зачем|почему|когда|где|how|what|why|when|where)$/i;
 const DEFINITION_LEAD_PATTERN =
   /\b(это|представляет собой|означает|is|are|refers to|defined as|helps|allows|lets)\b/i;
+const LEGAL_PATTERNS = {
+  offer: /\b(oferta|offer|terms|условия|оферт|пользовательское соглашение)\b/i,
+  privacy: /\b(privacy|policy|политика конфиденциальности|обработка персональных данных|privacy policy)\b/i,
+  cookies: /\b(cookie|cookies|куки|cookies policy)\b/i,
+  payment: /\b(payment|оплат[аы]|billing|тариф|price rules)\b/i,
+  delivery: /\b(delivery|shipping|доставк)\b/i,
+  guarantee: /\b(guarantee|warranty|гарант)\b/i,
+  requisites: /\b(requisites|реквизит|инн|огрн)\b/i,
+};
+const REGION_PATTERN =
+  /\b(москва|санкт[-\s]?петербург|петербург|спб|казань|екатеринбург|новосибирск|краснодар|нижний новгород|ростов-на-дону|самара|россия|рф|московская область|ленинградская область|область|край|республика|район)\b/gi;
 
 function toArray(value) {
   if (!value) return [];
@@ -253,6 +264,33 @@ function detectDateSignals($) {
   };
 }
 
+function detectLegalSignals(links) {
+  const categories = Object.entries(LEGAL_PATTERNS).reduce((acc, [key, pattern]) => {
+    const matched = links.filter((link) => pattern.test(`${link.text} ${link.rawHref} ${link.href}`));
+    acc[key] = {
+      count: matched.length,
+      samples: matched.slice(0, 3).map((link) => link.href || link.rawHref || link.text),
+    };
+    return acc;
+  }, {});
+
+  const matchedLinks = Object.values(categories).flatMap((entry) => entry.samples);
+
+  return {
+    categories,
+    total: [...new Set(matchedLinks)].length,
+  };
+}
+
+function detectRegionSignals(text) {
+  const matches = String(text || '').match(REGION_PATTERN) || [];
+  const normalized = [...new Set(matches.map((item) => String(item).trim().toLowerCase()))];
+  return {
+    regionMentionCount: normalized.length,
+    regionMentionSamples: normalized.slice(0, 8),
+  };
+}
+
 export function parseHtmlPage(html, pageUrl, headers = {}) {
   const $ = cheerio.load(html);
   const $main = detectMainRoot($);
@@ -393,6 +431,8 @@ export function parseHtmlPage(html, pageUrl, headers = {}) {
   const contactSignals = detectContactSignals(bodyText, links);
   const authorSignals = detectAuthorSignals($, pageUrl, bodyText);
   const dateSignals = detectDateSignals($);
+  const legalSignals = detectLegalSignals(links);
+  const regionSignals = detectRegionSignals(`${title} ${description} ${bodyText}`);
   const headingTexts = Object.values(headings).flat();
   const questionHeadingCount = countQuestionLikeHeadings(headingTexts);
   const headingFrequency = headingTexts.reduce((acc, heading) => {
@@ -540,5 +580,7 @@ export function parseHtmlPage(html, pageUrl, headers = {}) {
       definitionLikeIntro,
       chunkableSectionCount,
     },
+    legalSignals,
+    regionSignals,
   };
 }
