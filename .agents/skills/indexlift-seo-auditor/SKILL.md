@@ -36,6 +36,10 @@ This skill runs an ultra-detailed single-page SEO audit by default and produces:
 - category scores for technical SEO, on-page SEO, engine-specific signals, and lightweight performance signals
 - separate Google and Yandex findings
 - a page snapshot with exact counts for links, headings, images, assets, and metadata
+- lightweight content-quality heuristics such as opening-copy clarity, paragraph balance, and heading repetition
+- lightweight local-business heuristics such as contact reachability, messenger presence, conversion paths, and trust markers
+- a business-oriented priority layer that highlights what to fix first for more leads and stronger trust
+- a lightweight GEO layer that highlights what already helps AI answer engines, what is missing, and what to fix first
 
 ## Quick Start
 
@@ -87,6 +91,8 @@ When reporting results to the user:
 - do not claim off-page or paid-API data was collected if it was not
 - treat zero page coverage as a real failure, not a successful audit
 - prefer concise, actionable fixes over generic SEO advice
+- call out content clarity, business trust, and conversion friction when those lightweight signals are visible in HTML
+- distinguish HTML-only GEO heuristics from real-world citation tracking or LLM visibility measurements
 
 ## Included Files
 

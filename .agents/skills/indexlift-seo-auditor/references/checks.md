@@ -28,13 +28,18 @@
 - single H1
 - heading hierarchy
 - thin content
+- first-paragraph clarity near the top of the page
 - main-content ratio vs template text
+- paragraph readability balance (too many very short or very long paragraphs)
+- repeated heading detection
 - image alt text
 - lazy loading hints
 - internal anchor quality
 - generic anchor text detection
 - image width/height presence
 - contact-signal visibility for commercial/local pages
+- conversion-path visibility (forms, CTA buttons, reachable contact paths)
+- trust-marker visibility (reviews, cases, guarantees, portfolio-style proof)
 - Open Graph and Twitter metadata
 - favicon presence
 
@@ -72,6 +77,19 @@
 - missing image dimension performance hints
 - Core Web Vitals not directly measured in the free local build
 
+## GEO
+
+- answer-first introduction quality
+- question-led heading structure
+- FAQPage and HowTo support where content suggests it
+- source and citation support through reference-like links
+- author or expert attribution visibility
+- freshness signals through published or modified dates
+- entity-home clarity through schema, about, contact, and business signals
+- chunkable content structure via headings, lists, and tables
+- GEO-oriented schema coverage such as `Service`, `Person`, `WebPage`, and `WebSite`
+- overall answerability clarity for AI-generated summaries
+
 ## Scoring
 
 Weighted categories:
@@ -100,3 +118,4 @@ Built-in scope limits:
 - no browser-rendered DOM
 - no Core Web Vitals field/lab data
 - no backlinks, SERP, competitor, or off-page datasets
+- GEO is heuristic and HTML-only in this build, not measured through live LLM citation testing

@@ -1,20 +1,34 @@
 # IndexLift SEO Auditor
 
-Portable SEO audit skill for agents. Designed for `Cursor`, `Agent Skills`-compatible clients, and OpenClaw-style workflows.
+Portable `SEO + GEO` audit skill for agents. Designed for `Cursor`, `Agent Skills`-compatible clients, and OpenClaw-style workflows.
 
 Russian guide: [README.ru.md](README.ru.md)
 
-This repository contains **one thing**: a reusable skill package that runs ultra-detailed single-page SEO audits by default, with separate Google and Yandex checks and JSON + Markdown deliverables.
+This repository contains **one thing**: a reusable skill package that audits a page for classic SEO plus `GEO` readiness.
+
+The skill is built for:
+
+- ultra-detailed single-page SEO audits by default
+- separate `Google` and `Yandex` diagnostics
+- an HTML-only `GEO` layer for AI answer visibility
+- JSON + Markdown deliverables for both agents and humans
+
+The GEO layer focuses on:
+
+- what already helps AI systems understand the page
+- what weakens answerability, citation-worthiness, and entity clarity
+- what to fix first for stronger visibility in AI-generated answers
 
 ## Описание На Русском
 
 Этот репозиторий содержит только один продукт: self-contained SEO skill для Cursor и других agent skill-совместимых клиентов.
 
-Репозиторий нужен для запуска сверхподробного аудита одной страницы с отдельными проверками под `Google` и `Yandex`. `robots.txt` и sitemap используются как site context, а не как подмена полноценного обхода сайта. При необходимости можно вручную включить `crawl`-режим.
+Репозиторий нужен для запуска сверхподробного аудита одной страницы с отдельными проверками под `Google` и `Yandex`, а также с отдельным GEO-слоем для AI-видимости. `robots.txt` и sitemap используются как site context, а не как подмена полноценного обхода сайта. При необходимости можно вручную включить `crawl`-режим.
 
 - Markdown-отчет для человека
 - JSON-артефакт для агента или последующей обработки
 - scoring по техническим, on-page, engine-specific и performance сигналам
+- отдельные GEO diagnostics: что уже помогает AI, чего не хватает и что исправить первым
 
 Важно: это не агентская платформа, не dashboard и не полный SaaS-продукт. Здесь лежит только skill со встроенными скриптами и runtime.
 
@@ -22,29 +36,36 @@ This repository contains **one thing**: a reusable skill package that runs ultra
 
 ```mermaid
 flowchart TD
-    A[Пользователь или агент] --> B[SKILL.md]
-    B --> C[scripts/run-audit.js]
-    C --> D[lib/index.js]
-    D --> E[crawler.js_singlePageDefault]
-    D --> F[parsers/html-parser.js]
-    D --> G[checks/technical.js]
-    D --> H[checks/on-page.js]
-    D --> I[checks/google.js]
-    D --> J[checks/yandex.js]
-    D --> K[checks/performance.js]
-    D --> L[scoring.js]
-    D --> M[reporters/markdown.js]
-    D --> N[reporters/json.js]
-    E --> O[HTML_singlePage_plus_siteContext]
-    F --> P[title, description, headings, links, images, schema]
-    G --> Q[SEO findings]
-    H --> Q
-    I --> Q
-    J --> Q
-    K --> Q
-    L --> R[Score и grade]
-    M --> S[seo-audit-*.md]
-    N --> T[seo-audit-*.json]
+    userAgent[ПользовательИлиАгент] --> skillFile[SKILL.md]
+    skillFile --> runner[scripts/run-audit.js]
+    runner --> orchestrator[lib/index.js]
+    orchestrator --> crawler[crawler.js_singlePageDefault]
+    orchestrator --> parser[parsers/html-parser.js]
+    parser --> seoSignals[SEOAndBusinessSignals]
+    parser --> geoSignals[GEOSignals]
+    orchestrator --> techChecks[checks/technical.js]
+    orchestrator --> onPageChecks[checks/on-page.js]
+    orchestrator --> googleChecks[checks/google.js]
+    orchestrator --> yandexChecks[checks/yandex.js]
+    orchestrator --> perfChecks[checks/performance.js]
+    orchestrator --> geoChecks[checks/geo.js]
+    techChecks --> findings[UnifiedFindings]
+    onPageChecks --> findings
+    googleChecks --> findings
+    yandexChecks --> findings
+    perfChecks --> findings
+    geoChecks --> findings
+    orchestrator --> scoring[scoring.js]
+    findings --> mdReporter[reporters/markdown.js]
+    findings --> jsonReporter[reporters/json.js]
+    seoSignals --> snapshot[pageSnapshot]
+    geoSignals --> snapshot
+    snapshot --> mdReporter
+    snapshot --> jsonReporter
+    scoring --> mdReporter
+    scoring --> jsonReporter
+    mdReporter --> mdOut[seo-audit-*.md]
+    jsonReporter --> jsonOut[seo-audit-*.json]
 ```
 
 ## Как Работает Репозиторий
@@ -52,10 +73,10 @@ flowchart TD
 1. Агент читает `.agents/skills/indexlift-seo-auditor/SKILL.md` и понимает, когда использовать skill.
 2. Запускается `scripts/run-audit.js` с параметрами `--url`, `--mode`, `--tier`, `--engines`, `--output`.
 3. По умолчанию `scripts/lib/crawler.js` fetch-ит только стартовую страницу, а `robots.txt` и sitemap использует как supporting context.
-4. `scripts/lib/parsers/html-parser.js` извлекает SEO-данные из HTML и собирает точный page snapshot.
-5. Модули в `scripts/lib/checks/` формируют page-level проблемы и отдельно помечают context-only сигналы.
-6. `scripts/lib/scoring.js` считает итоговый score только по честным page-level findings.
-7. `scripts/lib/reporters/` сохраняет двухслойный отчет: client summary сверху и deep technical diagnostics ниже.
+4. `scripts/lib/parsers/html-parser.js` извлекает SEO, business и GEO-сигналы из HTML и собирает page snapshot.
+5. Модули в `scripts/lib/checks/` формируют page-level SEO findings, GEO findings и отдельно помечают context-only сигналы.
+6. `scripts/lib/scoring.js` считает итоговый SEO score только по честным page-level findings, не завышая GEO-эвристики.
+7. `scripts/lib/reporters/` сохраняет отчет с тремя слоями: client summary, GEO visibility summary и deep technical diagnostics.
 
 ## Быстрый Старт По-Русски
 
@@ -157,10 +178,12 @@ or copy it into the client’s skills directory if your runtime expects a custom
 ## What The Audit Covers
 
 - Single-page technical SEO: HTTPS, response status, redirects, canonicals, directives, mixed content, page weight
-- Single-page on-page SEO: title, description, headings, word count, image alt text, lazy loading, internal anchors, social metadata
+- Single-page on-page SEO: title, description, headings, word count, opening-copy clarity, paragraph quality, heading repetition, image alt text, lazy loading, internal anchors, social metadata
 - Google-specific signals: canonical alignment, JSON-LD validity, viewport, structured/preview coverage, contextual hreflang note
 - Yandex-specific signals: canonical consistency, markup coverage, markup validity, document size, contextual robots/sitemap note
 - Lightweight performance signals: HTML timing, HTML weight, asset count, script pressure, image pressure
+- Lightweight business heuristics: phone/email visibility, messenger links, forms/buttons, and trust markers in parsed HTML
+- Lightweight GEO heuristics: answer-first intros, question-led structure, FAQ/HowTo and entity schema, author/date/reference signals, chunkable sections, and GEO-specific priorities
 
 ## Repository Layout
 

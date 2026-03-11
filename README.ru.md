@@ -1,6 +1,6 @@
 # IndexLift SEO Auditor - инструкция на русском
 
-Этот репозиторий содержит только один продукт: SEO skill для агентов и Cursor, который по умолчанию делает сверхподробный аудит одной страницы и формирует отчеты отдельно под Google и Yandex.
+Этот репозиторий содержит только один продукт: `SEO + GEO` skill для агентов и Cursor, который по умолчанию делает сверхподробный аудит одной страницы и формирует отчеты отдельно под Google, Yandex и AI-видимость.
 
 ## Что находится в репозитории
 
@@ -12,49 +12,35 @@
 
 ## Схема работы репозитория
 
-```text
-Пользователь / агент
-        |
-        v
-SKILL.md
-описывает, когда и как использовать skill
-        |
-        v
-scripts/run-audit.js
-принимает параметры запуска:
---url --mode --tier --engines --output
-        |
-        v
-scripts/lib/index.js
-оркестрирует весь аудит
-        |
-        +--> crawler.js
-        |    по умолчанию загружает только стартовую HTML-страницу,
-        |    а robots.txt и sitemap берет как supporting context
-        |
-        +--> parsers/html-parser.js
-        |    вытаскивает title, description, headings, links, images, schema
-        |
-        +--> checks/
-        |    technical.js
-        |    on-page.js
-        |    google.js
-        |    yandex.js
-        |    performance.js
-        |    создают SEO findings
-        |
-        +--> scoring.js
-        |    считает баллы и итоговую оценку
-        |
-        +--> reporters/
-             markdown.js и json.js
-             собирают финальные отчеты
-        |
-        v
-deliverables/
-готовые файлы:
-- seo-audit-*.md
-- seo-audit-*.json
+```mermaid
+flowchart TD
+    userAgent[ПользовательИлиАгент] --> skillFile[SKILL.md]
+    skillFile --> runner[scripts/run-audit.js]
+    runner --> orchestrator[scripts/lib/index.js]
+    orchestrator --> crawler[crawler.js_singlePageDefault]
+    orchestrator --> parser[parsers/html-parser.js]
+    parser --> seoSignals[SEOAndBusinessSignals]
+    parser --> geoSignals[GEOSignals]
+    orchestrator --> techChecks[technical.js]
+    orchestrator --> onPageChecks[on-page.js]
+    orchestrator --> googleChecks[google.js]
+    orchestrator --> yandexChecks[yandex.js]
+    orchestrator --> perfChecks[performance.js]
+    orchestrator --> geoChecks[geo.js]
+    techChecks --> findings[UnifiedFindings]
+    onPageChecks --> findings
+    googleChecks --> findings
+    yandexChecks --> findings
+    perfChecks --> findings
+    geoChecks --> findings
+    orchestrator --> scoring[scoring.js]
+    seoSignals --> snapshot[pageSnapshot]
+    geoSignals --> snapshot
+    findings --> reporters[markdown.js_and_json.js]
+    snapshot --> reporters
+    scoring --> reporters
+    reporters --> mdOut[seo-audit-*.md]
+    reporters --> jsonOut[seo-audit-*.json]
 ```
 
 ## Как это работает по шагам
@@ -62,18 +48,20 @@ deliverables/
 1. Агент или пользователь запускает `scripts/run-audit.js`.
 2. Скрипт принимает URL страницы, режим аудита, tier и список движков.
 3. В default-режиме `single-page` встроенный crawler fetch-ит только стартовую страницу, а `robots.txt` и sitemap использует как контекст сайта.
-4. HTML parser разбирает страницу и извлекает SEO-данные.
+4. HTML parser разбирает страницу и извлекает SEO, business и GEO-сигналы.
 5. Набор проверок строит findings:
    - технические проблемы
    - on-page проблемы
    - сигналы для Google
    - сигналы для Yandex
    - легкие performance-сигналы
+   - GEO-сигналы для AI answer visibility
    - context-only сигналы, которые не должны искажать итоговый score
-6. Scoring engine считает баллы по категориям и общий score только по честным page-level данным.
+6. Scoring engine считает баллы по категориям и общий score только по честным page-level SEO-данным.
 7. Reporters создают два результата:
    - Markdown-отчет для чтения человеком
    - JSON-артефакт для последующей обработки агентом
+   - внутри отчетов есть отдельные GEO-блоки: что уже помогает AI, чего не хватает и что исправить первым
 
 ## Структура логики внутри skill
 
@@ -163,6 +151,7 @@ node scripts/run-audit.js --url "https://example.com" --mode crawl --tier standa
 - Google SEO: canonical alignment, JSON-LD, viewport, structured/preview coverage, contextual hreflang note
 - Yandex SEO: canonical consistency, micro-markup, document size, contextual robots/sitemap note
 - Performance: скорость ответа HTML, размер HTML, asset count, script pressure, image pressure
+- GEO: answer-first intro, question-led structure, FAQ/HowTo and entity schema, author/date/reference signals, chunkable sections и GEO priorities
 
 ## Только бесплатные инструменты
 

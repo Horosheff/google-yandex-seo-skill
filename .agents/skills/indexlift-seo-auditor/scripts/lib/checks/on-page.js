@@ -1,5 +1,11 @@
 import { createFinding } from '../utils.js';
 
+function countWords(text) {
+  return String(text || '')
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
 function hasHeadingSkip(parsed) {
   const present = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
     .filter((level) => (parsed.headings[level] || []).length > 0)
@@ -49,11 +55,19 @@ export function buildOnPageFindings(context) {
   const mainContentRatio = pageSnapshot.semantics.main_content_ratio;
   const missingImageDimensions = pageSnapshot.images.missing_dimensions;
   const commercialIntent = pageSnapshot.business_signals.commercial_or_local_intent;
+  const messengerLinks = pageSnapshot.business_signals.messenger_links || 0;
+  const formCount = pageSnapshot.business_signals.form_count || 0;
+  const trustMarkerCount = pageSnapshot.business_signals.trust_marker_count || 0;
+  const buttonCount = pageSnapshot.business_signals.button_count || 0;
+  const shortParagraphs = pageSnapshot.semantics.short_paragraphs || 0;
+  const longParagraphs = pageSnapshot.semantics.long_paragraphs || 0;
+  const repeatedHeadings = pageSnapshot.semantics.repeated_headings || 0;
   const hasReachableContact =
     pageSnapshot.business_signals.phone_count > 0 ||
     pageSnapshot.business_signals.email_count > 0 ||
     pageSnapshot.business_signals.tel_links > 0 ||
-    pageSnapshot.business_signals.mailto_links > 0;
+    pageSnapshot.business_signals.mailto_links > 0 ||
+    messengerLinks > 0;
 
   findings.push(
     createFinding({
@@ -215,6 +229,25 @@ export function buildOnPageFindings(context) {
 
   findings.push(
     createFinding({
+      id: 'first-paragraph-clarity',
+      title: 'The audited page opens with clear above-the-fold copy',
+      category: 'on_page',
+      scope: 'page',
+      status: page.parsed.firstParagraph && countWords(page.parsed.firstParagraph) >= 12 ? 'PASS' : 'WARN',
+      value: page.parsed.firstParagraph || 'Missing opening paragraph',
+      details:
+        page.parsed.firstParagraph && countWords(page.parsed.firstParagraph) >= 12
+          ? 'The first visible paragraph provides enough copy to clarify the page offer or topic early.'
+          : 'The opening copy is missing or too thin, so users and search engines get weak immediate context.',
+      recommendation:
+        page.parsed.firstParagraph && countWords(page.parsed.firstParagraph) >= 12
+          ? ''
+          : 'Add a strong opening paragraph near the top of the page that explains the offer, audience, and value in plain language.',
+    })
+  );
+
+  findings.push(
+    createFinding({
       id: 'main-content-ratio',
       title: 'The audited page has a healthy main-content-to-template ratio',
       category: 'on_page',
@@ -229,6 +262,53 @@ export function buildOnPageFindings(context) {
         mainContentRatio >= 0.35
           ? ''
           : 'Strengthen the main content block and reduce repetitive template text around the core page topic.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'paragraph-quality',
+      title: 'The audited page paragraphs are balanced for readability',
+      category: 'on_page',
+      scope: 'page',
+      status:
+        pageSnapshot.semantics.paragraph_count === 0
+          ? 'N/A'
+          : longParagraphs <= 2 && shortParagraphs <= Math.max(3, Math.floor(pageSnapshot.semantics.paragraph_count * 0.5))
+            ? 'PASS'
+            : 'WARN',
+      value: `${shortParagraphs} short, ${longParagraphs} long paragraphs`,
+      details:
+        pageSnapshot.semantics.paragraph_count === 0
+          ? 'No paragraph structure was detected in the parsed main content.'
+          : longParagraphs <= 2 && shortParagraphs <= Math.max(3, Math.floor(pageSnapshot.semantics.paragraph_count * 0.5))
+            ? 'The page copy looks reasonably balanced between scannability and depth.'
+            : 'The page mixes too many very short or very long paragraphs, which can make the content feel thin, choppy, or hard to scan.',
+      recommendation:
+        pageSnapshot.semantics.paragraph_count === 0 ||
+        (longParagraphs <= 2 && shortParagraphs <= Math.max(3, Math.floor(pageSnapshot.semantics.paragraph_count * 0.5)))
+          ? ''
+          : 'Rewrite body copy into clearer sections with medium-length paragraphs that explain value without looking fragmented.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'heading-repetition',
+      title: 'The audited page headings avoid repetitive section labels',
+      category: 'on_page',
+      scope: 'page',
+      status: repeatedHeadings === 0 ? 'PASS' : 'WARN',
+      value: `${repeatedHeadings} repeated headings`,
+      details:
+        repeatedHeadings === 0
+          ? 'No repeated heading text was detected across the parsed heading structure.'
+          : 'Some headings repeat the same wording, which can blur section meaning and weaken semantic structure.',
+      recommendation:
+        repeatedHeadings === 0
+          ? ''
+          : 'Make section headings more specific so each block communicates a distinct point, feature, or intent.',
+      evidence: pageSnapshot.semantics.repeated_heading_samples,
     })
   );
 
@@ -349,6 +429,52 @@ export function buildOnPageFindings(context) {
         !commercialIntent || hasReachableContact
           ? ''
           : 'Expose clear contact methods such as phone, email, or direct inquiry CTAs on the page itself.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'conversion-path-visibility',
+      title: 'Commercial or local pages expose a visible conversion path',
+      category: 'on_page',
+      scope: 'page',
+      status: !commercialIntent ? 'N/A' : formCount > 0 || buttonCount > 0 || hasReachableContact ? 'PASS' : 'WARN',
+      value:
+        formCount > 0 || buttonCount > 0 || hasReachableContact
+          ? `${formCount} forms, ${buttonCount} buttons, reachable contact present`
+          : 'No clear conversion path detected',
+      details:
+        !commercialIntent
+          ? 'The page does not strongly indicate a commercial or local offer, so conversion-path expectations are lower.'
+          : formCount > 0 || buttonCount > 0 || hasReachableContact
+            ? 'The page exposes at least one visible path to contact, apply, request, or convert.'
+            : 'The page appears commercial or local in intent but does not show a strong path to action in the parsed HTML.',
+      recommendation:
+        !commercialIntent || formCount > 0 || buttonCount > 0 || hasReachableContact
+          ? ''
+          : 'Add a clear form, contact block, or high-visibility action button near the main offer so users can act immediately.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'trust-markers',
+      title: 'Commercial or local pages expose trust-building proof',
+      category: 'on_page',
+      scope: 'page',
+      status: !commercialIntent ? 'N/A' : trustMarkerCount > 0 ? 'PASS' : 'WARN',
+      value: `${trustMarkerCount} trust markers`,
+      details:
+        !commercialIntent
+          ? 'The page does not clearly behave like a commercial or local landing page, so trust-proof expectations are lower.'
+          : trustMarkerCount > 0
+            ? 'The parsed page includes review, case, guarantee, certificate, or portfolio-style trust signals.'
+            : 'The page looks commercial or local but the parsed HTML exposes little trust-building proof.',
+      recommendation:
+        !commercialIntent || trustMarkerCount > 0
+          ? ''
+          : 'Show proof near the main offer such as reviews, client logos, case studies, guarantees, certificates, or portfolio examples.',
+      evidence: pageSnapshot.business_signals.trust_marker_samples,
     })
   );
 

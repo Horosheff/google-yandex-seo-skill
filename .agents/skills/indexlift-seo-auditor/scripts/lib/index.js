@@ -8,6 +8,7 @@ import { buildOnPageFindings } from './checks/on-page.js';
 import { buildPerformanceFindings } from './checks/performance.js';
 import { buildGoogleFindings } from './checks/google.js';
 import { buildYandexFindings } from './checks/yandex.js';
+import { buildGeoFindings } from './checks/geo.js';
 import { renderJsonArtifact } from './reporters/json.js';
 import { renderMarkdownReport } from './reporters/markdown.js';
 import { scoreFindings } from './scoring.js';
@@ -94,6 +95,7 @@ function summarizePages(crawl) {
           twitter: page.parsed.twitter,
           viewport: page.parsed.viewport,
           mixed_content_urls: page.parsed.mixedContentUrls,
+          geo_signals: page.parsed.geoSignals,
         }
       : null,
   }));
@@ -167,6 +169,10 @@ function buildPageSnapshot(page, crawl, options) {
       main_content_ratio: page.parsed.contentSignals.mainContentRatio,
       main_word_count: page.parsed.contentSignals.mainWordCount,
       body_word_count: page.parsed.contentSignals.bodyWordCount,
+      short_paragraphs: page.parsed.contentSignals.shortParagraphCount,
+      long_paragraphs: page.parsed.contentSignals.longParagraphCount,
+      repeated_headings: page.parsed.contentSignals.repeatedHeadingCount,
+      repeated_heading_samples: page.parsed.contentSignals.repeatedHeadingSamples,
     },
     canonical: page.parsed.canonical,
     lang: page.parsed.lang,
@@ -219,8 +225,15 @@ function buildPageSnapshot(page, crawl, options) {
       address_mentions: page.parsed.contactSignals.addressMentions,
       tel_links: page.parsed.contactSignals.telLinks,
       mailto_links: page.parsed.contactSignals.mailtoLinks,
+      messenger_links: page.parsed.contactSignals.messengerLinks,
+      messenger_samples: page.parsed.contactSignals.messengerSamples,
       cta_count: page.parsed.contentSignals.ctaCount,
       cta_samples: page.parsed.contentSignals.ctaSamples,
+      button_count: page.parsed.contentSignals.buttonCount,
+      button_samples: page.parsed.contentSignals.buttonSamples,
+      form_count: page.parsed.contentSignals.formCount,
+      trust_marker_count: page.parsed.contentSignals.trustMarkerCount,
+      trust_marker_samples: page.parsed.contentSignals.trustMarkerSamples,
     },
     structured_data: {
       json_ld_blocks: page.parsed.jsonLd.length,
@@ -231,6 +244,12 @@ function buildPageSnapshot(page, crawl, options) {
       has_local_business: page.parsed.structuredData.hasLocalBusiness,
       has_organization: page.parsed.structuredData.hasOrganization,
       has_breadcrumbs: page.parsed.structuredData.hasBreadcrumbs,
+      has_faq_page: page.parsed.structuredData.hasFAQPage,
+      has_howto: page.parsed.structuredData.hasHowTo,
+      has_person: page.parsed.structuredData.hasPerson,
+      has_service: page.parsed.structuredData.hasService,
+      has_webpage: page.parsed.structuredData.hasWebPage,
+      has_website: page.parsed.structuredData.hasWebSite,
       schema_types: page.parsed.structuredData.schemaTypes,
       schema_type_counts: page.parsed.structuredData.schemaTypeCounts,
       schema_completeness_issues: page.parsed.structuredData.schemaCompletenessIssues,
@@ -238,6 +257,36 @@ function buildPageSnapshot(page, crawl, options) {
       twitter_fields_present: twitterCoverage,
       hreflang_count: page.parsed.hreflangs.length,
       hreflangs: page.parsed.hreflangs,
+    },
+    geo_signals: {
+      answer_first_paragraph_present: Boolean(page.parsed.firstParagraph),
+      definition_like_intro: page.parsed.geoSignals.definitionLikeIntro,
+      question_headings: page.parsed.geoSignals.questionHeadingCount,
+      faq_schema_present: page.parsed.geoSignals.faqSchemaCount > 0,
+      faq_schema_count: page.parsed.geoSignals.faqSchemaCount,
+      howto_schema_present: page.parsed.geoSignals.howToSchemaCount > 0,
+      howto_schema_count: page.parsed.geoSignals.howToSchemaCount,
+      person_schema_count: page.parsed.geoSignals.personSchemaCount,
+      service_schema_count: page.parsed.geoSignals.serviceSchemaCount,
+      webpage_schema_count: page.parsed.geoSignals.webPageSchemaCount,
+      website_schema_count: page.parsed.geoSignals.webSiteSchemaCount,
+      author_present: page.parsed.geoSignals.authorBylinePresent,
+      author_name: page.parsed.geoSignals.authorName,
+      author_profile_link_present: page.parsed.geoSignals.authorLinkPresent,
+      author_profile_link: page.parsed.geoSignals.authorLink,
+      date_published_present: page.parsed.geoSignals.datePublishedPresent,
+      date_modified_present: page.parsed.geoSignals.dateModifiedPresent,
+      date_published: page.parsed.geoSignals.datePublished,
+      date_modified: page.parsed.geoSignals.dateModified,
+      reference_links: page.parsed.geoSignals.referenceLinkCount,
+      reference_link_samples: page.parsed.geoSignals.referenceLinkSamples,
+      about_page_link_present: page.parsed.geoSignals.aboutLinkPresent,
+      about_page_link: page.parsed.geoSignals.aboutLink,
+      contact_page_link_present: page.parsed.geoSignals.contactLinkPresent,
+      contact_page_link: page.parsed.geoSignals.contactLink,
+      list_blocks: page.parsed.geoSignals.listBlockCount,
+      table_blocks: page.parsed.geoSignals.tableCount,
+      chunkable_sections: page.parsed.geoSignals.chunkableSectionCount,
     },
     microdata: page.parsed.microdata,
     mixed_content_urls: page.parsed.mixedContentUrls,
@@ -279,6 +328,7 @@ export async function runAudit(rawOptions = {}) {
     ...buildTechnicalFindings(context),
     ...buildOnPageFindings(context),
     ...buildPerformanceFindings(context),
+    ...buildGeoFindings(context),
   ];
 
   if (options.engines.includes('google')) {
