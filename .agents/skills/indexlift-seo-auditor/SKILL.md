@@ -70,6 +70,8 @@ node scripts/run-audit.js --url "<URL>" --tier standard --engines google,yandex 
    - metadata, heading, and image issues next
    - Google/Yandex-specific gaps next
    - performance and context-only notes last
+3. Answer in the same language the user is currently using in the conversation unless they explicitly ask for another language.
+4. After giving the short summary, offer the user the full report and mention that the complete Markdown report and JSON artifact are available if they want the full version.
 
 ## Mode Guidance
 
@@ -93,6 +95,8 @@ When reporting results to the user:
 - prefer concise, actionable fixes over generic SEO advice
 - call out content clarity, business trust, and conversion friction when those lightweight signals are visible in HTML
 - distinguish HTML-only GEO heuristics from real-world citation tracking or LLM visibility measurements
+- keep the final explanation in the same language the user used with the agent unless they explicitly request a different language
+- after the short answer, offer the full report and tell the user that the complete Markdown report and JSON artifact can be provided or opened on request
 
 ## Included Files
 
