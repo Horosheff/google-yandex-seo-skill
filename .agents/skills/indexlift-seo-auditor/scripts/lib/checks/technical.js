@@ -1,307 +1,257 @@
 import { createFinding, formatBytes } from '../utils.js';
 
-function getBrokenPages(pages) {
-  return pages.filter((page) => page.response.status >= 400);
+function coverageFinding(context) {
+  return createFinding({
+    id: 'page-fetch-coverage',
+    title: 'The audited page was fetched successfully',
+    category: 'technical',
+    scope: 'page',
+    status: 'FAIL',
+    value: context.crawl.startUrl,
+    details: 'The requested URL could not be fetched as an HTML page, so page-level diagnostics are unavailable.',
+    recommendation:
+      'Verify reachability, bot access, redirects, and the exact URL before trusting page-level SEO output.',
+  });
 }
 
 export function buildTechnicalFindings(context) {
   const findings = [];
-  const { crawl, duplicates } = context;
-  const pages = crawl.pages;
-  const brokenPages = getBrokenPages(pages);
-  const redirectChains = pages.filter((page) => page.response.redirectChain.length > 2);
-  const canonicalMissing = pages.filter((page) => page.parsed && !page.parsed.canonical);
-  const canonicalConflict = pages.filter(
-    (page) => page.parsed?.canonical && page.parsed.canonical !== page.finalUrl
-  );
-  const noindexPages = pages.filter((page) => {
-    const robots = `${page.parsed?.metaRobots || ''} ${page.parsed?.xRobotsTag || ''}`.toLowerCase();
-    return robots.includes('noindex');
-  });
-  const mixedContentPages = pages.filter((page) => page.parsed?.mixedContentUrls?.length > 0);
-  const blockedByRobots = pages.filter((page) => page.crawlableByRobots === false);
-  const orphanSitemapUrls = crawl.sitemaps.urls.filter((url) => !crawl.incomingLinks[url] && url !== crawl.startUrl);
+  const { crawl, page, pageSnapshot } = context;
+  const robotsExists = crawl.robots.exists;
+  const sitemapExists = crawl.sitemaps.fetched.some((entry) => entry.ok);
 
   findings.push(
     createFinding({
       id: 'https-enabled',
-      title: 'HTTPS enabled on the audited origin',
+      title: 'The audited page uses HTTPS',
       category: 'technical',
+      scope: 'page',
       status: crawl.startUrl.startsWith('https://') ? 'PASS' : 'FAIL',
       value: crawl.startUrl,
       details: crawl.startUrl.startsWith('https://')
-        ? 'The audited entry URL uses HTTPS.'
-        : 'The audited entry URL uses plain HTTP.',
+        ? 'The requested page URL resolves over HTTPS.'
+        : 'The requested page URL uses plain HTTP.',
       recommendation: crawl.startUrl.startsWith('https://')
         ? ''
-        : 'Force HTTP to HTTPS redirects and use HTTPS as the canonical public origin.',
+        : 'Force HTTP to HTTPS redirects and keep the public page URL on HTTPS only.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'robots-availability',
-      title: 'robots.txt is available',
+      title: 'robots.txt is available as crawl context',
       category: 'technical',
-      status: crawl.robots.exists ? 'PASS' : 'WARN',
+      scope: 'context',
+      status: robotsExists ? 'PASS' : 'WARN',
       value: crawl.robots.url,
-      details: crawl.robots.exists
+      details: robotsExists
         ? `robots.txt fetched successfully with status ${crawl.robots.status}.`
-        : 'robots.txt could not be fetched successfully.',
-      recommendation: crawl.robots.exists
-        ? ''
-        : 'Publish a valid robots.txt so crawlers can understand crawl rules and sitemap hints.',
+        : 'robots.txt could not be fetched successfully, so bot guidance is weaker than it should be.',
+      recommendation: robotsExists ? '' : 'Publish a valid robots.txt so crawlers can understand crawl rules and sitemap hints.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'sitemap-availability',
-      title: 'XML sitemap is discoverable',
+      title: 'XML sitemap is discoverable as site context',
       category: 'technical',
-      status: crawl.sitemaps.fetched.some((entry) => entry.ok) ? 'PASS' : 'WARN',
+      scope: 'context',
+      status: sitemapExists ? 'PASS' : 'WARN',
       value: `${crawl.sitemaps.urls.length} URLs from ${crawl.sitemaps.fetched.length} sitemap fetches`,
-      details: crawl.sitemaps.fetched.some((entry) => entry.ok)
+      details: sitemapExists
         ? 'At least one sitemap file was fetched and parsed.'
         : 'No valid sitemap was discovered via robots.txt or /sitemap.xml.',
-      recommendation: crawl.sitemaps.fetched.some((entry) => entry.ok)
-        ? ''
-        : 'Publish an XML sitemap and list it in robots.txt.',
+      recommendation: sitemapExists ? '' : 'Publish an XML sitemap and list it in robots.txt.',
     })
   );
 
-  if (pages.length === 0) {
-    findings.push(
-      createFinding({
-        id: 'crawl-coverage',
-        title: 'At least one HTML page was crawled successfully',
-        category: 'technical',
-        status: 'FAIL',
-        value: '0 crawled HTML pages',
-        details: 'The crawler could not fetch any HTML pages from the provided entry URL.',
-        recommendation:
-          'Verify site reachability, DNS/TLS, bot blocking, or the supplied URL before trusting any page-level audit findings.',
-      })
-    );
-
+  if (!page || !page.parsed || !pageSnapshot) {
+    findings.push(coverageFinding(context));
     return findings;
   }
 
   findings.push(
     createFinding({
-      id: 'crawl-errors',
-      title: 'Crawled pages avoid 4xx/5xx responses',
+      id: 'page-response-status',
+      title: 'The audited page returns a successful status code',
       category: 'technical',
-      status: brokenPages.length === 0 ? 'PASS' : 'FAIL',
-      value: `${brokenPages.length} broken pages`,
+      scope: 'page',
+      status: page.response.status >= 200 && page.response.status < 400 ? 'PASS' : 'FAIL',
+      value: page.response.status,
       details:
-        brokenPages.length === 0
-          ? 'No crawled pages returned 4xx/5xx responses.'
-          : `Broken responses found for: ${brokenPages.slice(0, 5).map((page) => page.finalUrl).join(', ')}`,
+        page.response.status >= 200 && page.response.status < 400
+          ? `The audited page responded with status ${page.response.status}.`
+          : `The audited page responded with status ${page.response.status}, which weakens crawlability and indexability.`,
       recommendation:
-        brokenPages.length === 0
+        page.response.status >= 200 && page.response.status < 400
           ? ''
-          : 'Fix linked broken URLs or remove them from navigation, sitemaps, and internal links.',
-      evidence: brokenPages.slice(0, 5).map((page) => page.finalUrl),
+          : 'Serve the target page with a stable 200 response or a single intentional redirect to the preferred URL.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'redirect-hops',
-      title: 'Redirect chains stay within two hops',
+      title: 'The audited page resolves without a long redirect chain',
       category: 'technical',
-      status: redirectChains.length === 0 ? 'PASS' : 'WARN',
-      value: `${redirectChains.length} long redirect chains`,
+      scope: 'page',
+      status: pageSnapshot.redirect_hops <= 1 ? 'PASS' : pageSnapshot.redirect_hops <= 2 ? 'WARN' : 'FAIL',
+      value: `${pageSnapshot.redirect_hops} redirect hops`,
       details:
-        redirectChains.length === 0
-          ? 'No crawled page exceeded a two-hop redirect chain.'
-          : `Long redirect chains found for ${redirectChains.slice(0, 5).map((page) => page.url).join(', ')}.`,
+        pageSnapshot.redirect_hops <= 1
+          ? 'The audited URL resolves directly or with a single clean redirect.'
+          : `The audited URL reaches the final page after ${pageSnapshot.redirect_hops} hops.`,
       recommendation:
-        redirectChains.length === 0
-          ? ''
-          : 'Collapse redirects so important URLs resolve directly to the canonical destination.',
+        pageSnapshot.redirect_hops <= 1 ? '' : 'Collapse redirects so the public page URL resolves as directly as possible.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'canonical-presence',
-      title: 'Canonical tags are present on HTML pages',
+      title: 'The audited page exposes a canonical tag',
       category: 'technical',
-      status: canonicalMissing.length === 0 ? 'PASS' : 'WARN',
-      value: `${canonicalMissing.length} pages without canonical`,
-      details:
-        canonicalMissing.length === 0
-          ? 'All crawled HTML pages expose a canonical tag.'
-          : `Canonical is missing on ${canonicalMissing.length} pages.`,
+      scope: 'page',
+      status: page.parsed.canonical ? 'PASS' : 'WARN',
+      value: page.parsed.canonical || 'Missing',
+      details: page.parsed.canonical
+        ? 'A canonical link element is present on the audited page.'
+        : 'The audited page does not expose a canonical tag.',
       recommendation:
-        canonicalMissing.length === 0
-          ? ''
-          : 'Add self-referencing canonical tags on indexable pages and align alternate URLs to canonical targets.',
+        page.parsed.canonical ? '' : 'Add a self-referencing canonical tag unless this page is intentionally non-indexable.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'canonical-conflicts',
-      title: 'Canonical targets align with the final crawled URL',
+      title: 'The audited page canonical matches the final URL',
       category: 'technical',
-      status: canonicalConflict.length === 0 ? 'PASS' : 'WARN',
-      value: `${canonicalConflict.length} pages canonicalize elsewhere`,
+      scope: 'page',
+      status: !page.parsed.canonical || page.parsed.canonical === page.finalUrl ? 'PASS' : 'WARN',
+      value: page.parsed.canonical || 'Missing',
       details:
-        canonicalConflict.length === 0
-          ? 'No canonical/URL mismatches were detected on crawled pages.'
-          : `Some pages canonicalize to a different URL: ${canonicalConflict
-              .slice(0, 5)
-              .map((page) => `${page.finalUrl} -> ${page.parsed.canonical}`)
-              .join('; ')}`,
+        !page.parsed.canonical || page.parsed.canonical === page.finalUrl
+          ? 'The canonical signal does not conflict with the final fetched URL.'
+          : `The audited page canonical points to ${page.parsed.canonical} instead of ${page.finalUrl}.`,
       recommendation:
-        canonicalConflict.length === 0
+        !page.parsed.canonical || page.parsed.canonical === page.finalUrl
           ? ''
-          : 'Review whether cross-canonical targets are intentional and ensure they match crawl, internal linking, and sitemap signals.',
+          : 'Review whether the cross-canonical target is intentional and align it with redirects, internal links, and sitemaps.',
     })
   );
 
+  const robotsValue = `${page.parsed.metaRobots || ''} ${page.parsed.xRobotsTag || ''}`.toLowerCase();
   findings.push(
     createFinding({
       id: 'robot-directives',
-      title: 'Indexability directives are coherent',
+      title: 'The audited page has coherent indexability directives',
       category: 'technical',
-      status: noindexPages.length === 0 ? 'PASS' : 'WARN',
-      value: `${noindexPages.length} crawled pages marked noindex`,
-      details:
-        noindexPages.length === 0
-          ? 'No crawled page exposes a noindex directive.'
-          : `Noindex directives detected on ${noindexPages.length} crawled pages.`,
+      scope: 'page',
+      status: robotsValue.includes('noindex') ? 'WARN' : 'PASS',
+      value: (page.parsed.metaRobots || page.parsed.xRobotsTag || 'index,follow').trim(),
+      details: robotsValue.includes('noindex')
+        ? 'The audited page exposes a noindex directive.'
+        : 'The audited page does not expose a noindex directive.',
       recommendation:
-        noindexPages.length === 0
-          ? ''
-          : 'Confirm that noindex pages are intentional and do not conflict with canonicals or sitemap inclusion.',
+        robotsValue.includes('noindex')
+          ? 'Confirm this page should stay out of the index and ensure canonicals and internal links support that intent.'
+          : '',
     })
   );
 
   findings.push(
     createFinding({
       id: 'mixed-content',
-      title: 'HTTPS pages avoid mixed content resources',
+      title: 'The audited page avoids mixed-content resources',
       category: 'technical',
-      status: mixedContentPages.length === 0 ? 'PASS' : 'FAIL',
-      value: `${mixedContentPages.length} pages with mixed content`,
+      scope: 'page',
+      status: page.parsed.mixedContentUrls.length === 0 ? 'PASS' : 'FAIL',
+      value: `${page.parsed.mixedContentUrls.length} mixed-content resources`,
       details:
-        mixedContentPages.length === 0
-          ? 'No mixed-content asset URLs were detected.'
-          : `Mixed-content assets found on ${mixedContentPages.length} pages.`,
+        page.parsed.mixedContentUrls.length === 0
+          ? 'No HTTP resources were referenced from the audited page.'
+          : 'The audited page references HTTP assets from an HTTPS context.',
       recommendation:
-        mixedContentPages.length === 0
-          ? ''
-          : 'Serve all images, scripts, fonts, and stylesheets over HTTPS.',
+        page.parsed.mixedContentUrls.length === 0 ? '' : 'Serve all images, scripts, fonts, and stylesheets over HTTPS.',
+      evidence: page.parsed.mixedContentUrls.slice(0, 10),
     })
   );
 
   findings.push(
     createFinding({
       id: 'robots-blocking',
-      title: 'Important crawled pages are not blocked by robots rules',
+      title: 'The audited page is not blocked by robots.txt rules',
       category: 'technical',
-      status: blockedByRobots.length === 0 ? 'PASS' : 'WARN',
-      value: `${blockedByRobots.length} crawled URLs blocked by robots rules`,
+      scope: 'page',
+      status: page.crawlableByRobots === false ? 'WARN' : 'PASS',
+      value: page.crawlableByRobots === false ? 'Blocked' : 'Allowed',
       details:
-        blockedByRobots.length === 0
-          ? 'No crawled page appears to be disallowed by the parsed robots.txt rules.'
-          : `Some crawled URLs match Disallow rules: ${blockedByRobots.slice(0, 5).map((page) => page.finalUrl).join(', ')}`,
+        page.crawlableByRobots === false
+          ? 'The audited URL matches parsed Disallow rules in robots.txt.'
+          : 'The audited URL does not appear to be blocked by parsed robots rules.',
       recommendation:
-        blockedByRobots.length === 0
-          ? ''
-          : 'Align robots.txt with the intended crawl/index strategy for important pages.',
+        page.crawlableByRobots === false ? 'Align robots.txt with the intended crawl and index strategy for this page.' : '',
     })
   );
 
   findings.push(
     createFinding({
-      id: 'orphan-sitemap-urls',
-      title: 'Sitemap URLs are internally discoverable',
+      id: 'html-lang',
+      title: 'The audited page exposes an HTML lang attribute',
       category: 'technical',
-      status: orphanSitemapUrls.length === 0 ? 'PASS' : 'WARN',
-      value: `${orphanSitemapUrls.length} sitemap URLs without discovered internal links`,
-      details:
-        orphanSitemapUrls.length === 0
-          ? 'All sitemap URLs that were discovered are internally linked within the crawled scope.'
-          : 'Some sitemap URLs were not found through internal linking in the crawled scope.',
-      recommendation:
-        orphanSitemapUrls.length === 0
-          ? ''
-          : 'Link important sitemap URLs from crawlable pages so both users and bots can discover them naturally.',
-      evidence: orphanSitemapUrls.slice(0, 10),
+      scope: 'page',
+      status: page.parsed.lang ? 'PASS' : 'WARN',
+      value: page.parsed.lang || 'Missing',
+      details: page.parsed.lang
+        ? 'The audited page exposes an HTML lang attribute.'
+        : 'The audited page does not expose an HTML lang attribute.',
+      recommendation: page.parsed.lang ? '' : 'Add a valid HTML lang attribute to clarify language targeting.',
     })
   );
 
   findings.push(
     createFinding({
-      id: 'duplicate-titles',
-      title: 'Title tags remain unique across crawled pages',
+      id: 'charset-declaration',
+      title: 'The audited page exposes a charset declaration',
       category: 'technical',
-      status: duplicates.title.length === 0 ? 'PASS' : 'WARN',
-      value: `${duplicates.title.length} duplicate title groups`,
-      details:
-        duplicates.title.length === 0
-          ? 'No duplicate title groups were found in the crawled sample.'
-          : `Duplicate titles found, for example "${duplicates.title[0].value}" on ${duplicates.title[0].urls.length} pages.`,
-      recommendation:
-        duplicates.title.length === 0
-          ? ''
-          : 'Differentiate titles for pages with different search intent or canonicalize duplicates.',
+      scope: 'page',
+      status: page.parsed.charset ? 'PASS' : 'WARN',
+      value: page.parsed.charset || 'Missing',
+      details: page.parsed.charset
+        ? 'The audited page exposes a charset declaration.'
+        : 'The audited page does not expose a charset declaration in the parsed HTML.',
+      recommendation: page.parsed.charset ? '' : 'Declare a charset such as UTF-8 in the HTML head.',
     })
   );
-
-  findings.push(
-    createFinding({
-      id: 'duplicate-descriptions',
-      title: 'Meta descriptions remain unique across crawled pages',
-      category: 'technical',
-      status: duplicates.description.length === 0 ? 'PASS' : 'WARN',
-      value: `${duplicates.description.length} duplicate description groups`,
-      details:
-        duplicates.description.length === 0
-          ? 'No duplicate description groups were found in the crawled sample.'
-          : `Duplicate descriptions found, for example "${duplicates.description[0].value}" on ${duplicates.description[0].urls.length} pages.`,
-      recommendation:
-        duplicates.description.length === 0
-          ? ''
-          : 'Rewrite duplicate descriptions so important landing pages have distinct snippets.',
-    })
-  );
-
-  const avgTiming =
-    pages.length > 0 ? Math.round(pages.reduce((sum, page) => sum + page.response.timingMs, 0) / pages.length) : 0;
-  const largestHtml =
-    pages.length > 0 ? Math.max(...pages.map((page) => page.html.length || 0)) : 0;
 
   findings.push(
     createFinding({
       id: 'response-time',
-      title: 'Average HTML response time is within target',
+      title: 'The audited page responds within a practical time budget',
       category: 'technical',
-      status: avgTiming <= 500 ? 'PASS' : avgTiming <= 1000 ? 'WARN' : 'FAIL',
-      value: `${avgTiming} ms`,
-      details: `Average HTML fetch time across crawled pages is ${avgTiming} ms.`,
+      scope: 'page',
+      status: page.response.timingMs <= 500 ? 'PASS' : page.response.timingMs <= 1000 ? 'WARN' : 'FAIL',
+      value: `${page.response.timingMs} ms`,
+      details: `The audited page HTML responded in ${page.response.timingMs} ms.`,
       recommendation:
-        avgTiming <= 500
-          ? ''
-          : 'Optimize server response time, caching, and upstream dependencies for faster TTFB.',
+        page.response.timingMs <= 500 ? '' : 'Optimize server response time, caching, and upstream dependencies for faster TTFB.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'html-weight',
-      title: 'HTML documents stay reasonably lean',
+      title: 'The audited page HTML stays reasonably lean',
       category: 'technical',
-      status: largestHtml <= 300000 ? 'PASS' : largestHtml <= 600000 ? 'WARN' : 'FAIL',
-      value: formatBytes(largestHtml),
-      details: `Largest crawled HTML payload is ${formatBytes(largestHtml)}.`,
+      scope: 'page',
+      status: page.html.length <= 300000 ? 'PASS' : page.html.length <= 600000 ? 'WARN' : 'FAIL',
+      value: formatBytes(page.html.length),
+      details: `The audited page HTML payload is ${formatBytes(page.html.length)}.`,
       recommendation:
-        largestHtml <= 300000
+        page.html.length <= 300000
           ? ''
           : 'Reduce server-rendered bloat, excessive inline JSON, and repeated boilerplate in HTML output.',
     })

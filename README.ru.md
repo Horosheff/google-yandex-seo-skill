@@ -1,6 +1,6 @@
 # IndexLift SEO Auditor - инструкция на русском
 
-Этот репозиторий содержит только один продукт: SEO skill для агентов и Cursor, который умеет запускать crawl-аудит сайта и формировать отчеты отдельно под Google и Yandex.
+Этот репозиторий содержит только один продукт: SEO skill для агентов и Cursor, который по умолчанию делает сверхподробный аудит одной страницы и формирует отчеты отдельно под Google и Yandex.
 
 ## Что находится в репозитории
 
@@ -22,14 +22,15 @@ SKILL.md
         v
 scripts/run-audit.js
 принимает параметры запуска:
---url --tier --engines --output
+--url --mode --tier --engines --output
         |
         v
 scripts/lib/index.js
 оркестрирует весь аудит
         |
         +--> crawler.js
-        |    загружает robots.txt, sitemap, HTML-страницы и внутренние ссылки
+        |    по умолчанию загружает только стартовую HTML-страницу,
+        |    а robots.txt и sitemap берет как supporting context
         |
         +--> parsers/html-parser.js
         |    вытаскивает title, description, headings, links, images, schema
@@ -59,16 +60,17 @@ deliverables/
 ## Как это работает по шагам
 
 1. Агент или пользователь запускает `scripts/run-audit.js`.
-2. Скрипт принимает URL сайта, глубину обхода, tier и список движков.
-3. Встроенный crawler делает обход стартовой страницы, `robots.txt`, sitemap и внутренних ссылок.
-4. HTML parser разбирает страницы и извлекает SEO-данные.
+2. Скрипт принимает URL страницы, режим аудита, tier и список движков.
+3. В default-режиме `single-page` встроенный crawler fetch-ит только стартовую страницу, а `robots.txt` и sitemap использует как контекст сайта.
+4. HTML parser разбирает страницу и извлекает SEO-данные.
 5. Набор проверок строит findings:
    - технические проблемы
    - on-page проблемы
    - сигналы для Google
    - сигналы для Yandex
    - легкие performance-сигналы
-6. Scoring engine считает баллы по категориям и общий score.
+   - context-only сигналы, которые не должны искажать итоговый score
+6. Scoring engine считает баллы по категориям и общий score только по честным page-level данным.
 7. Reporters создают два результата:
    - Markdown-отчет для чтения человеком
    - JSON-артефакт для последующей обработки агентом
@@ -131,14 +133,21 @@ npm install
 node scripts/run-audit.js --url "https://example.com" --tier standard --engines google,yandex --output ./deliverables/
 ```
 
+Если нужен старый режим с обходом внутренних страниц, можно запустить:
+
+```bash
+node scripts/run-audit.js --url "https://example.com" --mode crawl --tier standard --engines google,yandex --output ./deliverables/
+```
+
 ## Аргументы запуска
 
 - `--url` - адрес сайта для аудита
-- `--tier` - режим глубины аудита: `basic`, `standard`, `pro`
+- `--mode` - режим аудита: `single-page` по умолчанию или `crawl`
+- `--tier` - уровень отчета и вспомогательных модулей: `basic`, `standard`, `pro`
 - `--engines` - список движков, например `google,yandex`
 - `--output` - папка, куда будут сохранены результаты
-- `--max-pages` - лимит страниц для обхода
-- `--max-depth` - глубина обхода
+- `--max-pages` - лимит страниц для обхода, если включен `--mode crawl`
+- `--max-depth` - глубина обхода, если включен `--mode crawl`
 
 ## Что создается на выходе
 
@@ -149,17 +158,28 @@ node scripts/run-audit.js --url "https://example.com" --tier standard --engines 
 
 ## Что именно проверяет skill
 
-- Техническое SEO: HTTPS, robots, sitemaps, redirects, canonicals, indexability
-- On-page SEO: title, description, H1, headings, alt, internal links
-- Google SEO: canonical alignment, hreflang, JSON-LD, viewport, structured data
-- Yandex SEO: robots, sitemap, canonical consistency, micro-markup, document size
-- Performance: скорость ответа HTML, размер HTML, resource pressure
+- Техническое SEO страницы: HTTPS, response status, redirects, canonicals, indexability, mixed content, размер HTML
+- On-page SEO страницы: title, description, H1, headings, alt, lazy loading, internal links
+- Google SEO: canonical alignment, JSON-LD, viewport, structured/preview coverage, contextual hreflang note
+- Yandex SEO: canonical consistency, micro-markup, document size, contextual robots/sitemap note
+- Performance: скорость ответа HTML, размер HTML, asset count, script pressure, image pressure
+
+## Только бесплатные инструменты
+
+Этот skill специально работает только на бесплатных локальных инструментах, которые уже лежат в репозитории.
+
+Он не использует:
+
+- платные SEO API
+- платные backlink-сервисы
+- платные SERP-провайдеры
+- платные сервисы конкурентной аналитики
 
 ## Когда использовать этот репозиторий
 
 Используй его, если нужно:
 
-- провести SEO-аудит сайта
+- провести максимально подробный SEO-аудит одной страницы
 - проверить технические SEO-ошибки
 - получить отдельные findings под Google и Yandex
 - отдать агенту готовый JSON и Markdown результат

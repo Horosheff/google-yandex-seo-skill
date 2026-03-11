@@ -1,119 +1,179 @@
 import { createFinding, formatBytes } from '../utils.js';
 
 export function buildPerformanceFindings(context) {
-  const pages = context.crawl.pages.filter((page) => page.parsed);
-  if (pages.length === 0) {
+  const { page, pageSnapshot } = context;
+  if (!page || !page.parsed || !pageSnapshot) {
     return [
       createFinding({
         id: 'performance-coverage',
-        title: 'Performance analysis requires at least one fetched HTML page',
+        title: 'Performance analysis requires a fetched HTML page',
         category: 'performance',
         status: 'N/A',
-        value: '0 crawled HTML pages',
-        details: 'No HTML pages were fetched, so lightweight performance signals could not be calculated.',
+        value: 'No fetched HTML page',
+        details: 'No HTML page was fetched, so lightweight performance signals could not be calculated.',
         recommendation: 'Restore crawl access or audit a reachable URL to enable page-level performance checks.',
       }),
       createFinding({
         id: 'cwv-adapter',
-        title: 'Core Web Vitals adapter is configured',
+        title: 'Built-in free audit does not measure Core Web Vitals directly',
         category: 'performance',
         status: 'N/A',
-        value: 'No PageSpeed/Lighthouse API integration configured',
-        details: 'This build reports lightweight HTML/resource signals only unless an external performance adapter is added.',
-        recommendation:
-          'Connect a PageSpeed Insights or Lighthouse adapter to measure LCP, CLS, INP, and field/lab CWV data.',
+        value: 'HTML and resource signals only',
+        details: 'This free local build reports built-in HTML and resource signals only.',
+        recommendation: 'Use the built-in HTML/resource findings here and treat CWV as outside the current free local scope.',
       }),
     ];
   }
-  const avgTiming =
-    pages.length > 0 ? Math.round(pages.reduce((sum, page) => sum + page.response.timingMs, 0) / pages.length) : 0;
-  const averageHtmlBytes =
-    pages.length > 0 ? Math.round(pages.reduce((sum, page) => sum + (page.html.length || 0), 0) / pages.length) : 0;
-  const averageRequestCount =
-    pages.length > 0
-      ? Math.round(
-          pages.reduce(
-            (sum, page) =>
-              sum + page.parsed.images.length + page.parsed.scripts.length + page.parsed.stylesheets.length,
-            0
-          ) / pages.length
-        )
-      : 0;
-  const heavyPages = pages.filter((page) => page.html.length > 500000);
-  const scriptHeavyPages = pages.filter((page) => page.parsed.scripts.length > 15);
+  const responseTime = page.response.timingMs;
+  const htmlBytes = page.html.length;
+  const requestCount = pageSnapshot.resources.total;
+  const scriptCount = pageSnapshot.resources.scripts;
+  const imageCount = pageSnapshot.images.total;
+  const inlineScriptBytes = pageSnapshot.resources.inline_script_bytes;
+  const inlineStyleBytes = pageSnapshot.resources.inline_style_bytes;
+  const missingImageDimensions = pageSnapshot.images.missing_dimensions;
 
   return [
     createFinding({
-      id: 'avg-load-time',
-      title: 'Average HTML response time is below 3 seconds',
+      id: 'page-load-time',
+      title: 'The audited page HTML response time stays below 3 seconds',
       category: 'performance',
-      status: avgTiming <= 1000 ? 'PASS' : avgTiming <= 3000 ? 'WARN' : 'FAIL',
-      value: `${avgTiming} ms`,
-      details: `Average HTML fetch time across crawled pages is ${avgTiming} ms.`,
+      scope: 'page',
+      status: responseTime <= 1000 ? 'PASS' : responseTime <= 3000 ? 'WARN' : 'FAIL',
+      value: `${responseTime} ms`,
+      details: `The audited page HTML fetch time is ${responseTime} ms.`,
       recommendation:
-        avgTiming <= 1000 ? '' : 'Improve backend latency, caching, and edge delivery for faster responses.',
+        responseTime <= 1000 ? '' : 'Improve backend latency, caching, and edge delivery for faster responses.',
     }),
     createFinding({
-      id: 'avg-html-weight',
-      title: 'Average HTML payload remains under 300 KB',
+      id: 'page-html-weight',
+      title: 'The audited page HTML payload remains under 300 KB',
       category: 'performance',
-      status: averageHtmlBytes <= 300000 ? 'PASS' : averageHtmlBytes <= 600000 ? 'WARN' : 'FAIL',
-      value: formatBytes(averageHtmlBytes),
-      details: `Average HTML size across crawled pages is ${formatBytes(averageHtmlBytes)}.`,
+      scope: 'page',
+      status: htmlBytes <= 300000 ? 'PASS' : htmlBytes <= 600000 ? 'WARN' : 'FAIL',
+      value: formatBytes(htmlBytes),
+      details: `The audited page HTML size is ${formatBytes(htmlBytes)}.`,
       recommendation:
-        averageHtmlBytes <= 300000
+        htmlBytes <= 300000
           ? ''
           : 'Reduce HTML payload size by trimming repeated markup and oversized inline data.',
     }),
     createFinding({
       id: 'resource-request-count',
-      title: 'Pages keep initial resource request counts reasonable',
+      title: 'The audited page keeps initial asset references reasonable',
       category: 'performance',
-      status: averageRequestCount <= 50 ? 'PASS' : averageRequestCount <= 80 ? 'WARN' : 'FAIL',
-      value: `${averageRequestCount} asset references per page on average`,
-      details: `Average number of images, scripts, and stylesheets per crawled page is ${averageRequestCount}.`,
+      scope: 'page',
+      status: requestCount <= 50 ? 'PASS' : requestCount <= 80 ? 'WARN' : 'FAIL',
+      value: `${requestCount} asset references`,
+      details: `The audited page references ${requestCount} images, scripts, and stylesheets in the parsed HTML.`,
       recommendation:
-        averageRequestCount <= 50
+        requestCount <= 50
           ? ''
           : 'Reduce above-the-fold asset count and defer non-critical scripts and images.',
     }),
     createFinding({
-      id: 'heavy-html-pages',
-      title: 'No extremely heavy HTML pages are present',
+      id: 'heavy-html-page',
+      title: 'The audited page avoids extremely heavy HTML',
       category: 'performance',
-      status: heavyPages.length === 0 ? 'PASS' : 'WARN',
-      value: `${heavyPages.length} pages over 500 KB of HTML`,
+      scope: 'page',
+      status: htmlBytes <= 500000 ? 'PASS' : 'WARN',
+      value: formatBytes(htmlBytes),
       details:
-        heavyPages.length === 0
-          ? 'No crawled page exceeded 500 KB of raw HTML.'
-          : 'Some pages ship unusually heavy HTML responses.',
+        htmlBytes <= 500000
+          ? 'The audited page does not exceed the heavy-page HTML threshold.'
+          : 'The audited page ships unusually heavy HTML.',
       recommendation:
-        heavyPages.length === 0
+        htmlBytes <= 500000
           ? ''
           : 'Audit templates with oversized HTML and move non-critical data out of the initial response.',
     }),
     createFinding({
       id: 'js-pressure',
-      title: 'Pages avoid excessive script pressure',
+      title: 'The audited page avoids excessive script pressure',
       category: 'performance',
-      status: scriptHeavyPages.length === 0 ? 'PASS' : 'WARN',
-      value: `${scriptHeavyPages.length} pages with more than 15 script tags`,
+      scope: 'page',
+      status: scriptCount <= 15 ? 'PASS' : 'WARN',
+      value: `${scriptCount} script tags`,
       details:
-        scriptHeavyPages.length === 0
-          ? 'No script-heavy pages were detected in the crawled sample.'
-          : 'Some pages rely on a high number of scripts, which can increase execution cost.',
+        scriptCount <= 15
+          ? 'The audited page does not appear script-heavy based on parsed HTML.'
+          : 'The audited page relies on a high number of scripts, which can increase execution cost.',
       recommendation:
-        scriptHeavyPages.length === 0 ? '' : 'Remove unused third-party scripts and defer non-critical JavaScript.',
+        scriptCount <= 15 ? '' : 'Remove unused third-party scripts and defer non-critical JavaScript.',
+    }),
+    createFinding({
+      id: 'inline-script-bloat',
+      title: 'The audited page avoids excessive inline JavaScript bloat',
+      category: 'performance',
+      scope: 'page',
+      status: inlineScriptBytes <= 50000 ? 'PASS' : inlineScriptBytes <= 150000 ? 'WARN' : 'FAIL',
+      value: formatBytes(inlineScriptBytes),
+      details:
+        inlineScriptBytes <= 50000
+          ? 'Inline JavaScript size stays within a practical range.'
+          : 'The audited page carries a large amount of inline JavaScript, which can inflate HTML weight and execution cost.',
+      recommendation:
+        inlineScriptBytes <= 50000
+          ? ''
+          : 'Move non-critical inline JavaScript out of the HTML response and trim unused script payloads.',
+    }),
+    createFinding({
+      id: 'inline-style-bloat',
+      title: 'The audited page avoids excessive inline style bloat',
+      category: 'performance',
+      scope: 'page',
+      status: inlineStyleBytes <= 30000 ? 'PASS' : inlineStyleBytes <= 100000 ? 'WARN' : 'FAIL',
+      value: formatBytes(inlineStyleBytes),
+      details:
+        inlineStyleBytes <= 30000
+          ? 'Inline style size stays within a practical range.'
+          : 'The audited page carries a large amount of inline style content inside the HTML.',
+      recommendation:
+        inlineStyleBytes <= 30000
+          ? ''
+          : 'Reduce inline style payloads and move repeated style rules into cacheable stylesheets where possible.',
+    }),
+    createFinding({
+      id: 'image-pressure',
+      title: 'The audited page avoids excessive image pressure',
+      category: 'performance',
+      scope: 'page',
+      status: imageCount <= 25 ? 'PASS' : imageCount <= 50 ? 'WARN' : 'FAIL',
+      value: `${imageCount} images`,
+      details:
+        imageCount <= 25
+          ? 'The audited page image count is within a practical range.'
+          : 'The audited page carries a high number of images, which can increase transfer and rendering cost.',
+      recommendation:
+        imageCount <= 25 ? '' : 'Reduce non-critical images above the fold and compress or lazy load the rest.',
+    }),
+    createFinding({
+      id: 'image-dimension-performance',
+      title: 'The audited page images declare dimensions to reduce layout instability',
+      category: 'performance',
+      scope: 'page',
+      status: imageCount === 0 || missingImageDimensions === 0 ? 'PASS' : 'WARN',
+      value: `${missingImageDimensions}/${imageCount} images missing dimensions`,
+      details:
+        imageCount === 0
+          ? 'The audited page does not contain images.'
+          : missingImageDimensions === 0
+            ? 'All audited-page images expose width and height attributes.'
+            : 'Some images are missing width and height, which can contribute to unstable rendering and slower visual stabilization.',
+      recommendation:
+        imageCount === 0 || missingImageDimensions === 0
+          ? ''
+          : 'Declare width and height on important images so browsers can reserve layout space earlier.',
     }),
     createFinding({
       id: 'cwv-adapter',
-      title: 'Core Web Vitals adapter is configured',
+      title: 'Built-in free audit does not measure Core Web Vitals directly',
       category: 'performance',
+      scope: 'context',
       status: 'N/A',
-      value: 'No PageSpeed/Lighthouse API integration configured',
-      details: 'This build reports lightweight HTML/resource signals only unless an external performance adapter is added.',
-      recommendation:
-        'Connect a PageSpeed Insights or Lighthouse adapter to measure LCP, CLS, INP, and field/lab CWV data.',
+      value: 'HTML and resource signals only',
+      details: 'This free local build reports built-in HTML and resource signals only.',
+      recommendation: 'Use the built-in HTML/resource findings here and treat CWV as outside the current free local scope.',
     }),
   ];
 }

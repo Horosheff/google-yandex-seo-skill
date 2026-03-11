@@ -11,9 +11,19 @@ import { buildYandexFindings } from './checks/yandex.js';
 import { renderJsonArtifact } from './reporters/json.js';
 import { renderMarkdownReport } from './reporters/markdown.js';
 import { scoreFindings } from './scoring.js';
-import { formatBytes, normalizeUrl, parseEngines, slugify, uniqueStrings } from './utils.js';
+import {
+  formatBytes,
+  normalizeUrl,
+  parseAuditMode,
+  parseEngines,
+  sameOrigin,
+  slugify,
+  textOverlapRatio,
+  uniqueStrings,
+} from './utils.js';
 
 function resolveOptions(options = {}) {
+  const mode = parseAuditMode(options.mode);
   const tier = String(options.tier || 'standard').toLowerCase();
   const tierConfig = TIER_CONFIG[tier] || TIER_CONFIG.standard;
   const url = normalizeUrl(options.url);
@@ -24,13 +34,13 @@ function resolveOptions(options = {}) {
 
   return {
     url,
+    mode,
     tier,
     engines: parseEngines(options.engines),
     format: options.format || 'both',
     output: options.output || null,
-    maxPages: Number(options.maxPages) || tierConfig.maxPages,
-    maxDepth: Number(options.maxDepth) || tierConfig.maxDepth,
-    includeOptionalApis: options.includeOptionalApis ?? tierConfig.includeOptionalApis,
+    maxPages: mode === 'single-page' ? 1 : Number(options.maxPages) || tierConfig.maxPages,
+    maxDepth: mode === 'single-page' ? 0 : Number(options.maxDepth) || tierConfig.maxDepth,
   };
 }
 
@@ -89,29 +99,149 @@ function summarizePages(crawl) {
   }));
 }
 
-function buildOptionalModules(options) {
-  const base = [
-    {
-      name: 'Backlink profile',
-      status: 'N/A',
-      details: 'External backlink APIs are not configured in this local build.',
-    },
-    {
-      name: 'Competitor gap analysis',
-      status: options.tier === 'pro' ? 'N/A' : 'Not included',
-      details:
-        options.tier === 'pro'
-          ? 'Competitor discovery and SERP overlap require external data sources or explicit competitor inputs.'
-          : 'Competitor analysis is reserved for the Pro tier.',
-    },
-    {
-      name: 'SERP snapshot',
-      status: 'N/A',
-      details: 'Live SERP acquisition is not configured in this local build.',
-    },
-  ];
+function getAuditedPage(crawl) {
+  return crawl.pages[0] || null;
+}
 
-  return base;
+function buildPageSnapshot(page, crawl, options) {
+  if (!page || !page.parsed) {
+    return null;
+  }
+
+  const pageUrl = page.finalUrl || page.url;
+  const links = page.parsed.links.filter((link) => link.href);
+  const internalLinks = links.filter((link) => sameOrigin(link.href, pageUrl));
+  const externalLinks = links.filter((link) => !sameOrigin(link.href, pageUrl));
+  const weakAnchors = internalLinks.filter((link) => !link.text || link.text.trim().length < 2);
+  const emptyAnchors = links.filter((link) => !link.text || link.text.trim().length === 0);
+  const imagesMissingAlt = page.parsed.images.filter((image) => !image.alt);
+  const lazyImages = page.parsed.images.filter((image) => image.loading === 'lazy');
+  const headingCounts = Object.fromEntries(
+    Object.entries(page.parsed.headings).map(([level, values]) => [level, values.length])
+  );
+  const redirectChain = page.response.redirectChain || [];
+  const ogCoverage = Object.values(page.parsed.openGraph).filter(Boolean).length;
+  const twitterCoverage = Object.values(page.parsed.twitter).filter(Boolean).length;
+  const primaryH1 = page.parsed.headings.h1?.[0] || '';
+  const titleH1Overlap = textOverlapRatio(page.parsed.title, primaryH1);
+  const titleDescriptionOverlap = textOverlapRatio(page.parsed.title, page.parsed.description);
+  const businessIntent =
+    page.parsed.contactSignals.phoneCount > 0 ||
+    page.parsed.contactSignals.emailCount > 0 ||
+    page.parsed.contactSignals.addressMentions > 0 ||
+    page.parsed.contentSignals.ctaCount > 0 ||
+    page.parsed.structuredData.hasLocalBusiness;
+
+  return {
+    mode: options.mode,
+    url: page.url,
+    final_url: pageUrl,
+    status: page.response.status,
+    content_type: page.contentType,
+    response_time_ms: page.response.timingMs,
+    html_bytes: page.html.length,
+    html_weight_human: formatBytes(page.html.length),
+    redirect_hops: Math.max(redirectChain.length - 1, 0),
+    redirect_chain: redirectChain,
+    crawlable_by_robots: page.crawlableByRobots,
+    site_context: {
+      robots_exists: crawl.robots.exists,
+      robots_url: crawl.robots.url,
+      sitemap_available: crawl.sitemaps.fetched.some((entry) => entry.ok),
+      sitemap_count: crawl.sitemaps.fetched.filter((entry) => entry.ok).length,
+      sitemap_urls_discovered: crawl.sitemaps.urls.length,
+    },
+    title: {
+      value: page.parsed.title,
+      length: page.parsed.title.length,
+    },
+    description: {
+      value: page.parsed.description,
+      length: page.parsed.description.length,
+    },
+    semantics: {
+      first_paragraph: page.parsed.firstParagraph,
+      paragraph_count: page.parsed.contentSignals.paragraphCount,
+      title_h1_overlap: Number(titleH1Overlap.toFixed(2)),
+      title_description_overlap: Number(titleDescriptionOverlap.toFixed(2)),
+      main_content_ratio: page.parsed.contentSignals.mainContentRatio,
+      main_word_count: page.parsed.contentSignals.mainWordCount,
+      body_word_count: page.parsed.contentSignals.bodyWordCount,
+    },
+    canonical: page.parsed.canonical,
+    lang: page.parsed.lang,
+    charset: page.parsed.charset,
+    viewport: page.parsed.viewport,
+    meta_robots: page.parsed.metaRobots,
+    x_robots_tag: page.parsed.xRobotsTag,
+    favicon: page.parsed.favicon,
+    word_count: page.parsed.wordCount,
+    headings: {
+      counts: headingCounts,
+      values: page.parsed.headings,
+    },
+    links: {
+      total: links.length,
+      internal: internalLinks.length,
+      external: externalLinks.length,
+      empty_anchor_text: emptyAnchors.length,
+      weak_internal_anchor_text: weakAnchors.length,
+      generic_anchor_text: page.parsed.linkSignals.genericAnchorCount,
+      generic_anchor_samples: page.parsed.linkSignals.genericAnchorSamples,
+      samples: links.slice(0, 12).map((link) => ({
+        href: link.href,
+        text: link.text,
+        rel: link.rel,
+      })),
+    },
+    images: {
+      total: page.parsed.images.length,
+      missing_alt: imagesMissingAlt.length,
+      lazy_loaded: lazyImages.length,
+      without_lazy: page.parsed.images.length - lazyImages.length,
+      missing_dimensions: page.parsed.imageSignals.missingDimensionsCount,
+      modern_formats: page.parsed.imageSignals.modernFormatCount,
+      samples_missing_alt: imagesMissingAlt.slice(0, 10).map((image) => image.src),
+    },
+    resources: {
+      scripts: page.parsed.scripts.length,
+      inline_scripts: page.parsed.scripts.filter((script) => script.inline).length,
+      inline_script_bytes: page.parsed.resourceSignals.inlineScriptBytes,
+      stylesheets: page.parsed.stylesheets.length,
+      inline_style_bytes: page.parsed.resourceSignals.inlineStyleBytes,
+      images: page.parsed.images.length,
+      total: page.parsed.scripts.length + page.parsed.stylesheets.length + page.parsed.images.length,
+    },
+    business_signals: {
+      commercial_or_local_intent: businessIntent,
+      phone_count: page.parsed.contactSignals.phoneCount,
+      email_count: page.parsed.contactSignals.emailCount,
+      address_mentions: page.parsed.contactSignals.addressMentions,
+      tel_links: page.parsed.contactSignals.telLinks,
+      mailto_links: page.parsed.contactSignals.mailtoLinks,
+      cta_count: page.parsed.contentSignals.ctaCount,
+      cta_samples: page.parsed.contentSignals.ctaSamples,
+    },
+    structured_data: {
+      json_ld_blocks: page.parsed.jsonLd.length,
+      json_ld_valid_blocks: page.parsed.structuredData.jsonLdValidCount,
+      json_ld_invalid_blocks: page.parsed.structuredData.jsonLdInvalidCount,
+      has_open_graph: page.parsed.structuredData.hasOpenGraph,
+      has_twitter_card: page.parsed.structuredData.hasTwitterCard,
+      has_local_business: page.parsed.structuredData.hasLocalBusiness,
+      has_organization: page.parsed.structuredData.hasOrganization,
+      has_breadcrumbs: page.parsed.structuredData.hasBreadcrumbs,
+      schema_types: page.parsed.structuredData.schemaTypes,
+      schema_type_counts: page.parsed.structuredData.schemaTypeCounts,
+      schema_completeness_issues: page.parsed.structuredData.schemaCompletenessIssues,
+      open_graph_fields_present: ogCoverage,
+      twitter_fields_present: twitterCoverage,
+      hreflang_count: page.parsed.hreflangs.length,
+      hreflangs: page.parsed.hreflangs,
+    },
+    microdata: page.parsed.microdata,
+    mixed_content_urls: page.parsed.mixedContentUrls,
+  };
 }
 
 export async function runAudit(rawOptions = {}) {
@@ -121,17 +251,28 @@ export async function runAudit(rawOptions = {}) {
     maxPages: options.maxPages,
     maxDepth: options.maxDepth,
     userAgent: 'indexliftbot',
+    singlePageOnly: options.mode === 'single-page',
   });
+  const auditedPage = getAuditedPage(crawl);
 
   const duplicates = {
-    title: buildDuplicateGroups(crawl.pages.filter((page) => page.parsed), (page) => page.parsed.title),
-    description: buildDuplicateGroups(crawl.pages.filter((page) => page.parsed), (page) => page.parsed.description),
+    title:
+      options.mode === 'single-page'
+        ? []
+        : buildDuplicateGroups(crawl.pages.filter((page) => page.parsed), (page) => page.parsed.title),
+    description:
+      options.mode === 'single-page'
+        ? []
+        : buildDuplicateGroups(crawl.pages.filter((page) => page.parsed), (page) => page.parsed.description),
   };
+  const pageSnapshot = buildPageSnapshot(auditedPage, crawl, options);
 
   const context = {
     options,
     crawl,
     duplicates,
+    page: auditedPage,
+    pageSnapshot,
   };
 
   const findings = [
@@ -150,6 +291,7 @@ export async function runAudit(rawOptions = {}) {
   const scores = scoreFindings(findings, options.engines);
   const metadata = {
     url: options.url,
+    mode: options.mode,
     tier: options.tier,
     engines: options.engines,
     generatedAt: dayjs().toISOString(),
@@ -158,6 +300,7 @@ export async function runAudit(rawOptions = {}) {
   const auditResult = {
     metadata,
     crawlSummary: {
+      mode: options.mode,
       startUrl: crawl.startUrl,
       origin: crawl.origin,
       pagesCrawled: crawl.pages.length,
@@ -171,11 +314,11 @@ export async function runAudit(rawOptions = {}) {
       },
       sitemaps: crawl.sitemaps.fetched,
     },
+    pageSnapshot,
     pages: summarizePages(crawl),
     duplicates,
     findings,
     scores,
-    optionalModules: buildOptionalModules(options),
   };
 
   auditResult.artifacts = {
@@ -195,6 +338,7 @@ export async function writeAuditArtifacts(auditResult, rawOptions = {}) {
   const options = resolveOptions({
     ...rawOptions,
     url: auditResult.metadata.url,
+    mode: auditResult.metadata.mode,
     tier: auditResult.metadata.tier,
     engines: auditResult.metadata.engines.join(','),
   });
@@ -228,6 +372,7 @@ export async function writeAuditArtifacts(auditResult, rawOptions = {}) {
     markdownPath: options.format === 'json' ? null : markdownPath,
     jsonPath: options.format === 'md' ? null : jsonPath,
     summary: {
+      mode: auditResult.metadata.mode,
       score: auditResult.scores.overall.score,
       grade: auditResult.scores.overall.grade,
       pages: auditResult.crawlSummary.pagesCrawled,

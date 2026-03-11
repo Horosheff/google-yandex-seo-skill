@@ -3,6 +3,7 @@ import { runAudit, writeAuditArtifacts } from './lib/index.js';
 
 function parseArgs(argv) {
   const args = {
+    mode: 'single-page',
     tier: 'standard',
     engines: 'google,yandex',
     format: 'both',
@@ -21,6 +22,9 @@ function parseArgs(argv) {
     } else if (token === '--tier' && next) {
       args.tier = next;
       index += 1;
+    } else if (token === '--mode' && next) {
+      args.mode = next;
+      index += 1;
     } else if (token === '--engines' && next) {
       args.engines = next;
       index += 1;
@@ -38,7 +42,7 @@ function parseArgs(argv) {
 
   if (!args.url) {
     throw new Error(
-      'Usage: node ".agents/skills/indexlift-seo-auditor/scripts/run-audit.js" --url <URL> [--tier basic|standard|pro] [--output path]'
+      'Usage: node ".agents/skills/indexlift-seo-auditor/scripts/run-audit.js" --url <URL> [--mode single-page|crawl] [--tier basic|standard|pro] [--output path]'
     );
   }
 
@@ -49,6 +53,7 @@ async function main() {
   const options = parseArgs(process.argv);
   console.log('\n  IndexLift SEO Auditor');
   console.log(`  Auditing: ${options.url}`);
+  console.log(`  Mode:     ${options.mode}`);
   console.log(`  Tier:     ${options.tier}`);
   console.log(`  Engines:  ${options.engines}\n`);
 

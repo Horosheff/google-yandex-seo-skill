@@ -5,17 +5,14 @@ export const TIER_CONFIG = {
   basic: {
     maxPages: 1,
     maxDepth: 0,
-    includeOptionalApis: false,
   },
   standard: {
     maxPages: 5,
     maxDepth: 2,
-    includeOptionalApis: false,
   },
   pro: {
     maxPages: 50,
     maxDepth: 4,
-    includeOptionalApis: true,
   },
 };
 
@@ -27,6 +24,7 @@ export const SCORE_WEIGHTS = {
 };
 
 export const VALID_ENGINES = ['google', 'yandex'];
+export const VALID_AUDIT_MODES = ['single-page', 'crawl'];
 
 export const STATUS_SCORES = {
   PASS: 1,

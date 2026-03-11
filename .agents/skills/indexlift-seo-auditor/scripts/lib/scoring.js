@@ -3,7 +3,7 @@ import { gradeScore } from './utils.js';
 
 function filterScored(findings, predicate = () => true) {
   return findings.filter(
-    (finding) => finding.status in STATUS_SCORES && predicate(finding)
+    (finding) => finding.status in STATUS_SCORES && finding.scope !== 'context' && predicate(finding)
   );
 }
 
@@ -36,6 +36,18 @@ function weightedCategoryScore(findings, category, extraPredicate = () => true) 
   };
 }
 
+function confidenceFromApplicable(applicable) {
+  if (applicable >= 12) return 'high';
+  if (applicable >= 7) return 'medium';
+  return 'low';
+}
+
+function explainConfidence(applicable) {
+  if (applicable >= 12) return 'The score is backed by a broad set of applicable page-level checks.';
+  if (applicable >= 7) return 'The score is backed by a moderate set of page-level checks, but some areas remain heuristic.';
+  return 'The score is based on a limited set of applicable checks and should be treated cautiously.';
+}
+
 export function scoreFindings(findings, engines) {
   const technical = weightedCategoryScore(findings, 'technical');
   const onPage = weightedCategoryScore(findings, 'on_page');
@@ -61,10 +73,17 @@ export function scoreFindings(findings, engines) {
     byEngine[engine] = engineScore;
   }
 
+  const totalApplicable =
+    technical.applicable + onPage.applicable + engineOverall.applicable + performance.applicable;
+  const confidence = confidenceFromApplicable(totalApplicable);
+
   return {
     overall: {
       score: overallScore,
       grade: gradeScore(overallScore),
+      confidence,
+      confidence_reason: explainConfidence(totalApplicable),
+      applicable_checks: totalApplicable,
     },
     categories: {
       technical,

@@ -5,16 +5,15 @@
 - HTTPS entry URL
 - `robots.txt` availability
 - sitemap discovery
-- broken crawled pages
+- page response status
 - redirect chains
 - canonical presence
 - canonical conflicts
 - `meta robots` and `x-robots-tag`
 - mixed content
 - robots blocking conflicts
-- orphan sitemap URLs in crawl scope
-- duplicate title groups
-- duplicate description groups
+- HTML `lang` attribute
+- charset declaration
 - response time
 - HTML payload size
 
@@ -22,14 +21,20 @@
 
 - title presence
 - title length
+- title and H1 alignment
 - meta description presence
 - meta description length
+- title and description alignment
 - single H1
 - heading hierarchy
 - thin content
+- main-content ratio vs template text
 - image alt text
 - lazy loading hints
 - internal anchor quality
+- generic anchor text detection
+- image width/height presence
+- contact-signal visibility for commercial/local pages
 - Open Graph and Twitter metadata
 - favicon presence
 
@@ -38,7 +43,9 @@
 - canonical alignment
 - hreflang coverage where relevant
 - JSON-LD validity
-- structured or preview metadata coverage
+- structured data coverage
+- schema completeness heuristics
+- breadcrumb markup coverage
 - viewport presence
 
 ## Yandex-Specific
@@ -47,17 +54,23 @@
 - sitemap availability
 - canonical consistency
 - markup or preview metadata availability
+- markup completeness heuristics
 - JSON-LD validity
+- local/business signal visibility
 - document size limit check
 
 ## Performance Signals
 
-- average HTML response time
-- average HTML weight
+- HTML response time
+- HTML weight
 - asset request pressure
 - heavy HTML pages
 - script pressure
-- Core Web Vitals adapter availability
+- inline script bloat
+- inline style bloat
+- image pressure
+- missing image dimension performance hints
+- Core Web Vitals not directly measured in the free local build
 
 ## Scoring
 
@@ -74,3 +87,16 @@ Status handling:
 - `WARN`: half credit
 - `FAIL`: zero credit
 - `N/A`: excluded from the denominator
+
+Confidence handling:
+
+- `high`: broad set of applicable page-level checks
+- `medium`: moderate coverage with some heuristic limits
+- `low`: sparse coverage, so the score should be treated cautiously
+
+Built-in scope limits:
+
+- raw HTML and local parsing only
+- no browser-rendered DOM
+- no Core Web Vitals field/lab data
+- no backlinks, SERP, competitor, or off-page datasets

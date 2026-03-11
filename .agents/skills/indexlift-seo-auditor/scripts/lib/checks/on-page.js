@@ -1,9 +1,5 @@
 import { createFinding } from '../utils.js';
 
-function countPages(pages, predicate) {
-  return pages.filter(predicate);
-}
-
 function hasHeadingSkip(parsed) {
   const present = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
     .filter((level) => (parsed.headings[level] || []).length > 0)
@@ -19,182 +15,238 @@ function hasHeadingSkip(parsed) {
 }
 
 export function buildOnPageFindings(context) {
-  const findings = [];
-  const pages = context.crawl.pages.filter((page) => page.parsed);
-  if (pages.length === 0) {
+  const { page, pageSnapshot } = context;
+  if (!page || !page.parsed || !pageSnapshot) {
     return [
       createFinding({
         id: 'on-page-coverage',
-        title: 'On-page analysis requires at least one fetched HTML page',
+        title: 'On-page analysis requires a fetched HTML page',
         category: 'on_page',
         status: 'N/A',
-        value: '0 crawled HTML pages',
-        details: 'No HTML pages were available for title, heading, image, and content analysis.',
+        value: 'No fetched HTML page',
+        details: 'No HTML page was available for title, heading, image, and content analysis.',
         recommendation: 'Restore crawl access or audit a reachable URL to enable on-page checks.',
       }),
     ];
   }
-  const missingTitles = countPages(pages, (page) => !page.parsed.title);
-  const titleLengthIssues = countPages(
-    pages,
-    (page) => page.parsed.title && (page.parsed.title.length < 30 || page.parsed.title.length > 65)
-  );
-  const missingDescriptions = countPages(pages, (page) => !page.parsed.description);
-  const descriptionLengthIssues = countPages(
-    pages,
-    (page) =>
-      page.parsed.description && (page.parsed.description.length < 70 || page.parsed.description.length > 170)
-  );
-  const invalidH1 = countPages(pages, (page) => (page.parsed.headings.h1 || []).length !== 1);
-  const headingSkips = countPages(pages, (page) => hasHeadingSkip(page.parsed));
-  const thinPages = countPages(pages, (page) => page.parsed.wordCount < 150);
-  const missingAlt = countPages(
-    pages,
-    (page) => page.parsed.images.length > 0 && page.parsed.images.some((image) => !image.alt)
-  );
-  const noLazyLoading = countPages(
-    pages,
-    (page) => page.parsed.images.length > 2 && !page.parsed.images.some((image) => image.loading === 'lazy')
-  );
-  const weakInternalAnchors = countPages(
-    pages,
-    (page) =>
-      page.parsed.links.filter((link) => link.href && new URL(link.href).origin === new URL(page.finalUrl).origin)
-        .filter((link) => !link.text || link.text.length < 2).length > 0
-  );
+
+  const findings = [];
+  const titleLength = page.parsed.title.length;
+  const descriptionLength = page.parsed.description.length;
+  const h1Count = pageSnapshot.headings.counts.h1 || 0;
+  const hasHeadingGap = hasHeadingSkip(page.parsed);
+  const wordCount = page.parsed.wordCount;
+  const imageCount = page.parsed.images.length;
+  const missingAltCount = pageSnapshot.images.missing_alt;
+  const lazyLoadedCount = pageSnapshot.images.lazy_loaded;
+  const internalLinks = pageSnapshot.links.internal;
+  const weakInternalAnchors = pageSnapshot.links.weak_internal_anchor_text;
+  const genericAnchors = pageSnapshot.links.generic_anchor_text;
+  const hasOpenGraph = page.parsed.structuredData.hasOpenGraph;
+  const hasTwitterCard = page.parsed.structuredData.hasTwitterCard;
+  const titleH1Overlap = pageSnapshot.semantics.title_h1_overlap;
+  const titleDescriptionOverlap = pageSnapshot.semantics.title_description_overlap;
+  const mainContentRatio = pageSnapshot.semantics.main_content_ratio;
+  const missingImageDimensions = pageSnapshot.images.missing_dimensions;
+  const commercialIntent = pageSnapshot.business_signals.commercial_or_local_intent;
+  const hasReachableContact =
+    pageSnapshot.business_signals.phone_count > 0 ||
+    pageSnapshot.business_signals.email_count > 0 ||
+    pageSnapshot.business_signals.tel_links > 0 ||
+    pageSnapshot.business_signals.mailto_links > 0;
 
   findings.push(
     createFinding({
       id: 'title-presence',
-      title: 'Pages expose title tags',
+      title: 'The audited page exposes a title tag',
       category: 'on_page',
-      status: missingTitles.length === 0 ? 'PASS' : 'FAIL',
-      value: `${missingTitles.length} pages without title`,
-      details:
-        missingTitles.length === 0
-          ? 'All crawled HTML pages have a title tag.'
-          : 'Some crawled pages are missing a title tag entirely.',
-      recommendation: missingTitles.length === 0 ? '' : 'Add a descriptive, unique title tag to every indexable page.',
+      scope: 'page',
+      status: page.parsed.title ? 'PASS' : 'FAIL',
+      value: page.parsed.title || 'Missing',
+      details: page.parsed.title
+        ? 'The audited page includes a title tag.'
+        : 'The audited page is missing a title tag entirely.',
+      recommendation: page.parsed.title ? '' : 'Add a descriptive, intent-matching title tag to the audited page.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'title-length',
-      title: 'Title lengths stay in a practical search-snippet range',
+      title: 'The audited page title length stays in a practical snippet range',
       category: 'on_page',
-      status: titleLengthIssues.length === 0 ? 'PASS' : 'WARN',
-      value: `${titleLengthIssues.length} pages outside the 30-65 character range`,
-      details:
-        titleLengthIssues.length === 0
-          ? 'No severe title length issues were found in the crawled sample.'
-          : 'Several titles are likely too short or too long for strong snippet control.',
+      scope: 'page',
+      status: !page.parsed.title ? 'N/A' : titleLength >= 30 && titleLength <= 65 ? 'PASS' : 'WARN',
+      value: page.parsed.title ? `${titleLength} chars` : 'Missing title',
+      details: !page.parsed.title
+        ? 'No title tag is available to score for snippet length.'
+        : titleLength >= 30 && titleLength <= 65
+          ? 'The title length is in a practical range for snippet control.'
+          : 'The title looks shorter or longer than the typical practical range for search snippets.',
       recommendation:
-        titleLengthIssues.length === 0
+        !page.parsed.title || (titleLength >= 30 && titleLength <= 65)
           ? ''
-          : 'Keep titles specific and usually within roughly 30-65 characters while prioritizing intent clarity.',
+          : 'Keep the title specific and usually within roughly 30-65 characters while prioritizing intent clarity.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'title-h1-alignment',
+      title: 'The audited page title and primary H1 describe the same topic',
+      category: 'on_page',
+      scope: 'page',
+      status: h1Count !== 1 || !page.parsed.title ? 'N/A' : titleH1Overlap >= 0.3 ? 'PASS' : 'WARN',
+      value: `${Math.round(titleH1Overlap * 100)}% overlap`,
+      details:
+        h1Count !== 1 || !page.parsed.title
+          ? 'A clean title-to-H1 comparison requires one H1 and a title tag.'
+          : titleH1Overlap >= 0.3
+            ? 'The title and primary H1 appear semantically aligned.'
+            : 'The title and primary H1 look weakly aligned, which can blur topic focus.',
+      recommendation:
+        h1Count !== 1 || !page.parsed.title || titleH1Overlap >= 0.3
+          ? ''
+          : 'Align the title and main H1 around the same primary topic and search intent.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'description-presence',
-      title: 'Pages expose meta descriptions',
+      title: 'The audited page exposes a meta description',
       category: 'on_page',
-      status: missingDescriptions.length === 0 ? 'PASS' : 'WARN',
-      value: `${missingDescriptions.length} pages without description`,
-      details:
-        missingDescriptions.length === 0
-          ? 'All crawled HTML pages expose a meta description.'
-          : 'Some crawled pages are missing a meta description.',
+      scope: 'page',
+      status: page.parsed.description ? 'PASS' : 'WARN',
+      value: page.parsed.description || 'Missing',
+      details: page.parsed.description
+        ? 'The audited page includes a meta description.'
+        : 'The audited page does not expose a meta description.',
       recommendation:
-        missingDescriptions.length === 0
-          ? ''
-          : 'Add concise, intent-matching descriptions for high-value landing pages.',
+        page.parsed.description ? '' : 'Add a concise, intent-matching description that summarizes page value clearly.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'description-length',
-      title: 'Meta description lengths are useful for snippets',
+      title: 'The audited page description length is useful for snippets',
       category: 'on_page',
-      status: descriptionLengthIssues.length === 0 ? 'PASS' : 'WARN',
-      value: `${descriptionLengthIssues.length} pages outside the 70-170 character range`,
-      details:
-        descriptionLengthIssues.length === 0
-          ? 'No major description length issues were detected.'
-          : 'Some descriptions look too short or too long to control snippets effectively.',
+      scope: 'page',
+      status:
+        !page.parsed.description ? 'N/A' : descriptionLength >= 70 && descriptionLength <= 170 ? 'PASS' : 'WARN',
+      value: page.parsed.description ? `${descriptionLength} chars` : 'Missing description',
+      details: !page.parsed.description
+        ? 'No description is available to score for snippet length.'
+        : descriptionLength >= 70 && descriptionLength <= 170
+          ? 'The description length is in a practical range for search snippets.'
+          : 'The description looks too short or too long to control snippets effectively.',
       recommendation:
-        descriptionLengthIssues.length === 0
+        !page.parsed.description || (descriptionLength >= 70 && descriptionLength <= 170)
           ? ''
-          : 'Rewrite outlier descriptions so they summarize page value without excessive truncation.',
+          : 'Rewrite the description so it summarizes page value without excessive truncation.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'title-description-alignment',
+      title: 'The audited page title and meta description support the same intent',
+      category: 'on_page',
+      scope: 'page',
+      status: !page.parsed.title || !page.parsed.description ? 'N/A' : titleDescriptionOverlap >= 0.15 ? 'PASS' : 'WARN',
+      value: `${Math.round(titleDescriptionOverlap * 100)}% overlap`,
+      details:
+        !page.parsed.title || !page.parsed.description
+          ? 'A title and description are both required to compare search-intent alignment.'
+          : titleDescriptionOverlap >= 0.15
+            ? 'The title and description appear aligned around the same page topic.'
+            : 'The title and description look weakly aligned, which can reduce snippet clarity.',
+      recommendation:
+        !page.parsed.title || !page.parsed.description || titleDescriptionOverlap >= 0.15
+          ? ''
+          : 'Rewrite the title and description so they reinforce the same topic, promise, and search intent.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'h1-usage',
-      title: 'Each page has a single clear H1',
+      title: 'The audited page has a single clear H1',
       category: 'on_page',
-      status: invalidH1.length === 0 ? 'PASS' : 'WARN',
-      value: `${invalidH1.length} pages without exactly one H1`,
+      scope: 'page',
+      status: h1Count === 1 ? 'PASS' : 'WARN',
+      value: `${h1Count} H1 tags`,
       details:
-        invalidH1.length === 0
-          ? 'Every crawled page contains exactly one H1.'
-          : 'Some crawled pages have no H1 or multiple H1 tags.',
-      recommendation:
-        invalidH1.length === 0 ? '' : 'Use a single primary H1 that clearly matches the page topic and search intent.',
+        h1Count === 1 ? 'The audited page contains exactly one H1.' : 'The audited page has no H1 or multiple H1 tags.',
+      recommendation: h1Count === 1 ? '' : 'Use a single primary H1 that clearly matches the page topic and search intent.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'heading-hierarchy',
-      title: 'Heading hierarchy is logically nested',
+      title: 'The audited page heading hierarchy is logically nested',
       category: 'on_page',
-      status: headingSkips.length === 0 ? 'PASS' : 'WARN',
-      value: `${headingSkips.length} pages with heading-level skips`,
-      details:
-        headingSkips.length === 0
-          ? 'No significant heading-level skips were detected.'
-          : 'Some pages jump between heading levels, which weakens document structure.',
-      recommendation:
-        headingSkips.length === 0 ? '' : 'Use headings in sequence so document sections remain easy to interpret.',
+      scope: 'page',
+      status: hasHeadingGap ? 'WARN' : 'PASS',
+      value: JSON.stringify(pageSnapshot.headings.counts),
+      details: hasHeadingGap
+        ? 'The audited page jumps between heading levels, which weakens document structure.'
+        : 'No significant heading-level skips were detected on the audited page.',
+      recommendation: hasHeadingGap ? 'Use headings in sequence so document sections remain easy to interpret.' : '',
     })
   );
 
   findings.push(
     createFinding({
       id: 'thin-content',
-      title: 'Pages contain enough visible copy to express topical depth',
+      title: 'The audited page contains enough visible copy to express topical depth',
       category: 'on_page',
-      status: thinPages.length === 0 ? 'PASS' : 'WARN',
-      value: `${thinPages.length} pages under 150 visible words`,
+      scope: 'page',
+      status: wordCount >= 150 ? 'PASS' : 'WARN',
+      value: `${wordCount} words`,
+      details: wordCount >= 150
+        ? 'The audited page has enough visible copy for basic topical clarity.'
+        : 'The audited page provides very little visible copy, which may limit topical clarity.',
+      recommendation: wordCount >= 150 ? '' : 'Expand the page copy so it answers the target intent more completely.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'main-content-ratio',
+      title: 'The audited page has a healthy main-content-to-template ratio',
+      category: 'on_page',
+      scope: 'page',
+      status: mainContentRatio >= 0.35 ? 'PASS' : mainContentRatio >= 0.2 ? 'WARN' : 'FAIL',
+      value: `${Math.round(mainContentRatio * 100)}% main content ratio`,
       details:
-        thinPages.length === 0
-          ? 'No thin-content pages were found in the crawled sample.'
-          : 'Several pages provide very little visible copy, which may limit topical clarity.',
+        mainContentRatio >= 0.35
+          ? 'A substantial share of visible page text appears to belong to the main content area.'
+          : 'A large share of visible page text appears to come from template or surrounding boilerplate.',
       recommendation:
-        thinPages.length === 0
+        mainContentRatio >= 0.35
           ? ''
-          : 'Expand pages with thin copy so they answer the user intent more completely.',
+          : 'Strengthen the main content block and reduce repetitive template text around the core page topic.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'image-alt',
-      title: 'Images use descriptive alt text',
+      title: 'The audited page images use descriptive alt text',
       category: 'on_page',
-      status: missingAlt.length === 0 ? 'PASS' : 'WARN',
-      value: `${missingAlt.length} pages with missing image alt text`,
-      details:
-        missingAlt.length === 0
-          ? 'No missing alt-text issues were found on crawled pages with images.'
-          : 'Some pages contain images without descriptive alt text.',
+      scope: 'page',
+      status: imageCount === 0 || missingAltCount === 0 ? 'PASS' : 'WARN',
+      value: `${missingAltCount}/${imageCount} images missing alt text`,
+      details: imageCount === 0
+        ? 'The audited page does not contain images.'
+        : missingAltCount === 0
+          ? 'All audited-page images expose alt text.'
+          : 'Some audited-page images are missing descriptive alt text.',
       recommendation:
-        missingAlt.length === 0
+        imageCount === 0 || missingAltCount === 0
           ? ''
           : 'Add meaningful alt text to informative images and keep decorative images intentionally empty.',
     })
@@ -203,32 +255,36 @@ export function buildOnPageFindings(context) {
   findings.push(
     createFinding({
       id: 'image-lazy-loading',
-      title: 'Non-critical images use lazy loading',
+      title: 'The audited page uses lazy loading for non-critical images',
       category: 'on_page',
-      status: noLazyLoading.length === 0 ? 'PASS' : 'WARN',
-      value: `${noLazyLoading.length} image-heavy pages without lazy loading`,
-      details:
-        noLazyLoading.length === 0
-          ? 'Image-heavy pages already use lazy loading or do not require it.'
-          : 'Some image-heavy pages do not appear to lazy load below-the-fold images.',
+      scope: 'page',
+      status: imageCount <= 2 || lazyLoadedCount > 0 ? 'PASS' : 'WARN',
+      value: `${lazyLoadedCount}/${imageCount} images lazy-loaded`,
+      details: imageCount <= 2
+        ? 'The page is not image-heavy enough for lazy loading to be critical.'
+        : lazyLoadedCount > 0
+          ? 'The audited page already lazy loads at least some images.'
+          : 'The audited page appears image-heavy but does not expose lazy loading.',
       recommendation:
-        noLazyLoading.length === 0 ? '' : 'Lazy load non-critical images to reduce initial page cost.',
+        imageCount <= 2 || lazyLoadedCount > 0 ? '' : 'Lazy load non-critical images to reduce initial page cost.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'internal-anchor-text',
-      title: 'Internal links use descriptive anchor text',
+      title: 'The audited page internal links use descriptive anchor text',
       category: 'on_page',
-      status: weakInternalAnchors.length === 0 ? 'PASS' : 'WARN',
-      value: `${weakInternalAnchors.length} pages with weak internal anchor text`,
-      details:
-        weakInternalAnchors.length === 0
-          ? 'No obvious empty internal anchors were found.'
-          : 'Some pages contain internal links with weak or empty anchor text.',
+      scope: 'page',
+      status: weakInternalAnchors === 0 ? 'PASS' : 'WARN',
+      value: `${weakInternalAnchors}/${internalLinks} weak internal anchors`,
+      details: internalLinks === 0
+        ? 'The audited page does not expose internal links in the parsed HTML.'
+        : weakInternalAnchors === 0
+          ? 'No obvious weak internal anchor text was found.'
+          : 'Some internal links use weak or empty anchor text.',
       recommendation:
-        weakInternalAnchors.length === 0
+        weakInternalAnchors === 0
           ? ''
           : 'Use descriptive internal anchors that reflect destination intent rather than generic labels.',
     })
@@ -236,36 +292,109 @@ export function buildOnPageFindings(context) {
 
   findings.push(
     createFinding({
-      id: 'social-meta',
-      title: 'Pages provide social snippet metadata',
+      id: 'generic-anchor-text',
+      title: 'The audited page avoids generic anchor text',
       category: 'on_page',
-      status: pages.every((page) => page.parsed.structuredData.hasOpenGraph && page.parsed.structuredData.hasTwitterCard)
-        ? 'PASS'
-        : 'WARN',
-      value: `${pages.filter((page) => !page.parsed.structuredData.hasOpenGraph || !page.parsed.structuredData.hasTwitterCard).length} pages missing OG/Twitter coverage`,
+      scope: 'page',
+      status: genericAnchors === 0 ? 'PASS' : 'WARN',
+      value: `${genericAnchors} generic anchors`,
       details:
-        pages.every((page) => page.parsed.structuredData.hasOpenGraph && page.parsed.structuredData.hasTwitterCard)
-          ? 'Open Graph and Twitter Card coverage is present across the crawled sample.'
-          : 'Some pages are missing Open Graph or Twitter Card metadata.',
+        genericAnchors === 0
+          ? 'No generic anchors like "read more" or "подробнее" were detected in the parsed link sample.'
+          : 'Some links use generic anchors that weaken semantic clarity for users and search engines.',
       recommendation:
-        pages.every((page) => page.parsed.structuredData.hasOpenGraph && page.parsed.structuredData.hasTwitterCard)
+        genericAnchors === 0
           ? ''
-          : 'Add consistent social metadata to improve link previews across messengers and social platforms.',
+          : 'Replace generic anchors with destination-specific phrases that describe the next page more clearly.',
+      evidence: pageSnapshot.links.generic_anchor_samples,
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'image-dimensions',
+      title: 'The audited page images declare width and height where possible',
+      category: 'on_page',
+      scope: 'page',
+      status: imageCount === 0 || missingImageDimensions === 0 ? 'PASS' : 'WARN',
+      value: `${missingImageDimensions}/${imageCount} images missing dimensions`,
+      details:
+        imageCount === 0
+          ? 'The audited page does not contain images.'
+          : missingImageDimensions === 0
+            ? 'All audited-page images expose width and height attributes.'
+            : 'Some images are missing width and height, which can contribute to unstable layout and weaker rendering hints.',
+      recommendation:
+        imageCount === 0 || missingImageDimensions === 0
+          ? ''
+          : 'Declare width and height on important images so browsers can reserve layout space earlier.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'contact-signals',
+      title: 'Commercial or local pages expose clear contact signals',
+      category: 'on_page',
+      scope: 'page',
+      status: !commercialIntent ? 'N/A' : hasReachableContact ? 'PASS' : 'WARN',
+      value: hasReachableContact ? 'Visible contact signals found' : 'No clear phone or email signals found',
+      details:
+        !commercialIntent
+          ? 'The audited page does not strongly indicate a commercial or local intent, so contact expectations are reduced.'
+          : hasReachableContact
+            ? 'The audited page exposes direct contact signals such as phone or email.'
+            : 'The page looks commercial or local in intent but does not expose clear reachable contact signals.',
+      recommendation:
+        !commercialIntent || hasReachableContact
+          ? ''
+          : 'Expose clear contact methods such as phone, email, or direct inquiry CTAs on the page itself.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'open-graph-meta',
+      title: 'The audited page exposes Open Graph metadata',
+      category: 'on_page',
+      scope: 'page',
+      status: hasOpenGraph ? 'PASS' : 'WARN',
+      value: hasOpenGraph ? 'Present' : 'Missing',
+      details: hasOpenGraph
+        ? 'Open Graph metadata is available for social previews.'
+        : 'Open Graph metadata is missing on the audited page.',
+      recommendation: hasOpenGraph ? '' : 'Add Open Graph tags so the page previews well in messengers and social platforms.',
+    })
+  );
+
+  findings.push(
+    createFinding({
+      id: 'twitter-card-meta',
+      title: 'The audited page exposes Twitter Card metadata',
+      category: 'on_page',
+      scope: 'page',
+      status: hasTwitterCard ? 'PASS' : 'WARN',
+      value: hasTwitterCard ? 'Present' : 'Missing',
+      details: hasTwitterCard
+        ? 'Twitter Card metadata is available for the audited page.'
+        : 'Twitter Card metadata is missing on the audited page.',
+      recommendation:
+        hasTwitterCard ? '' : 'Add Twitter Card metadata so link previews remain consistent outside of search results.',
     })
   );
 
   findings.push(
     createFinding({
       id: 'favicon',
-      title: 'Pages expose a favicon',
+      title: 'The audited page exposes a favicon',
       category: 'on_page',
-      status: pages.every((page) => page.parsed.favicon) ? 'PASS' : 'WARN',
-      value: `${pages.filter((page) => !page.parsed.favicon).length} pages without favicon reference`,
-      details:
-        pages.every((page) => page.parsed.favicon)
-          ? 'All crawled pages expose a favicon reference.'
-          : 'Some pages do not expose a favicon link tag.',
-      recommendation: pages.every((page) => page.parsed.favicon) ? '' : 'Expose a favicon consistently across templates.',
+      scope: 'page',
+      status: page.parsed.favicon ? 'PASS' : 'WARN',
+      value: page.parsed.favicon || 'Missing',
+      details: page.parsed.favicon
+        ? 'The audited page exposes a favicon reference.'
+        : 'The audited page does not expose a favicon link tag.',
+      recommendation: page.parsed.favicon ? '' : 'Expose a favicon consistently for this page and its templates.',
     })
   );
 

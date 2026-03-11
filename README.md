@@ -4,13 +4,13 @@ Portable SEO audit skill for agents. Designed for `Cursor`, `Agent Skills`-compa
 
 Russian guide: [README.ru.md](README.ru.md)
 
-This repository contains **one thing**: a reusable skill package that runs crawl-based SEO audits with separate Google and Yandex checks and produces JSON + Markdown deliverables.
+This repository contains **one thing**: a reusable skill package that runs ultra-detailed single-page SEO audits by default, with separate Google and Yandex checks and JSON + Markdown deliverables.
 
 ## Описание На Русском
 
 Этот репозиторий содержит только один продукт: self-contained SEO skill для Cursor и других agent skill-совместимых клиентов.
 
-Репозиторий нужен для запуска crawl-аудита сайта с отдельными проверками под `Google` и `Yandex`. На выходе skill создает:
+Репозиторий нужен для запуска сверхподробного аудита одной страницы с отдельными проверками под `Google` и `Yandex`. `robots.txt` и sitemap используются как site context, а не как подмена полноценного обхода сайта. При необходимости можно вручную включить `crawl`-режим.
 
 - Markdown-отчет для человека
 - JSON-артефакт для агента или последующей обработки
@@ -25,7 +25,7 @@ flowchart TD
     A[Пользователь или агент] --> B[SKILL.md]
     B --> C[scripts/run-audit.js]
     C --> D[lib/index.js]
-    D --> E[crawler.js]
+    D --> E[crawler.js_singlePageDefault]
     D --> F[parsers/html-parser.js]
     D --> G[checks/technical.js]
     D --> H[checks/on-page.js]
@@ -35,7 +35,7 @@ flowchart TD
     D --> L[scoring.js]
     D --> M[reporters/markdown.js]
     D --> N[reporters/json.js]
-    E --> O[HTML, robots.txt, sitemap, links]
+    E --> O[HTML_singlePage_plus_siteContext]
     F --> P[title, description, headings, links, images, schema]
     G --> Q[SEO findings]
     H --> Q
@@ -50,12 +50,12 @@ flowchart TD
 ## Как Работает Репозиторий
 
 1. Агент читает `.agents/skills/indexlift-seo-auditor/SKILL.md` и понимает, когда использовать skill.
-2. Запускается `scripts/run-audit.js` с параметрами `--url`, `--tier`, `--engines`, `--output`.
-3. `scripts/lib/crawler.js` обходит сайт, проверяет `robots.txt`, sitemap и внутренние ссылки.
-4. `scripts/lib/parsers/html-parser.js` извлекает SEO-данные из HTML.
-5. Модули в `scripts/lib/checks/` формируют список проблем и сигналов для Google, Yandex, technical SEO, on-page и performance.
-6. `scripts/lib/scoring.js` считает итоговый score и категорийные оценки.
-7. `scripts/lib/reporters/` сохраняет финальные результаты в `.md` и `.json`.
+2. Запускается `scripts/run-audit.js` с параметрами `--url`, `--mode`, `--tier`, `--engines`, `--output`.
+3. По умолчанию `scripts/lib/crawler.js` fetch-ит только стартовую страницу, а `robots.txt` и sitemap использует как supporting context.
+4. `scripts/lib/parsers/html-parser.js` извлекает SEO-данные из HTML и собирает точный page snapshot.
+5. Модули в `scripts/lib/checks/` формируют page-level проблемы и отдельно помечают context-only сигналы.
+6. `scripts/lib/scoring.js` считает итоговый score только по честным page-level findings.
+7. `scripts/lib/reporters/` сохраняет двухслойный отчет: client summary сверху и deep technical diagnostics ниже.
 
 ## Быстрый Старт По-Русски
 
@@ -63,6 +63,12 @@ flowchart TD
 cd .agents/skills/indexlift-seo-auditor
 npm install
 node scripts/run-audit.js --url "https://example.com" --tier standard --engines google,yandex --output ./deliverables/
+```
+
+Default mode is `single-page`. If you want the legacy wider crawl, run:
+
+```bash
+node scripts/run-audit.js --url "https://example.com" --mode crawl --tier standard --engines google,yandex --output ./deliverables/
 ```
 
 ## Что Где Лежит
@@ -103,12 +109,12 @@ It includes:
 
 It does **not** pretend to include:
 
-- backlink APIs
-- competitor intelligence
-- live SERP scraping
+- paid backlink APIs
+- competitor intelligence from external providers
+- live SERP scraping from external providers
 - a dashboard or business automation platform
 
-Those are intentionally left out or reported as `N/A`.
+This repository intentionally stays inside free local tooling only.
 
 ## Quick Start
 
@@ -150,11 +156,11 @@ or copy it into the client’s skills directory if your runtime expects a custom
 
 ## What The Audit Covers
 
-- Technical SEO: HTTPS, robots, sitemaps, redirects, canonicals, directives, mixed content, crawl errors
-- On-page SEO: title, description, headings, thin content, image alt text, internal anchors, social metadata
-- Google-specific signals: canonical alignment, hreflang, JSON-LD validity, viewport, structured data coverage
-- Yandex-specific signals: robots, sitemap presence, canonical consistency, markup coverage, document size constraints
-- Lightweight performance signals: HTML timing, HTML weight, resource pressure, script pressure
+- Single-page technical SEO: HTTPS, response status, redirects, canonicals, directives, mixed content, page weight
+- Single-page on-page SEO: title, description, headings, word count, image alt text, lazy loading, internal anchors, social metadata
+- Google-specific signals: canonical alignment, JSON-LD validity, viewport, structured/preview coverage, contextual hreflang note
+- Yandex-specific signals: canonical consistency, markup coverage, markup validity, document size, contextual robots/sitemap note
+- Lightweight performance signals: HTML timing, HTML weight, asset count, script pressure, image pressure
 
 ## Repository Layout
 
@@ -182,6 +188,17 @@ This repository is ready to be published as a GitHub repository for:
 - Cursor discovery from `.agents/skills/`
 - manual global install into `~/.cursor/skills/`
 - reuse by other `Agent Skills`-compatible clients
+
+## Free Local Scope
+
+This build uses only the free local tools bundled in the repository.
+
+It does not depend on:
+
+- paid SEO APIs
+- paid backlink providers
+- paid SERP data providers
+- paid competitor intelligence services
 
 ## License
 

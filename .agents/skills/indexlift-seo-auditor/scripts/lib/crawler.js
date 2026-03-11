@@ -177,6 +177,7 @@ export async function crawlSite({
   maxPages,
   maxDepth,
   userAgent = '*',
+  singlePageOnly = false,
 }) {
   const startUrl = normalizeUrl(url);
   if (!startUrl) {
@@ -236,7 +237,7 @@ export async function crawlSite({
     };
     pages.push(page);
 
-    if (!parsed || current.depth >= maxDepth) {
+    if (!parsed || singlePageOnly || current.depth >= maxDepth) {
       continue;
     }
 

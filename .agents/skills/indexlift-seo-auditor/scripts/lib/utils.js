@@ -1,5 +1,5 @@
 import path from 'path';
-import { VALID_ENGINES } from './constants.js';
+import { VALID_AUDIT_MODES, VALID_ENGINES } from './constants.js';
 
 export function normalizeUrl(rawUrl, baseUrl = null) {
   try {
@@ -53,6 +53,11 @@ export function parseEngines(rawEngines) {
 
   const unique = [...new Set(parsed.filter((engine) => VALID_ENGINES.includes(engine)))];
   return unique.length > 0 ? unique : [...VALID_ENGINES];
+}
+
+export function parseAuditMode(rawMode) {
+  const normalized = String(rawMode || 'single-page').trim().toLowerCase();
+  return VALID_AUDIT_MODES.includes(normalized) ? normalized : 'single-page';
 }
 
 export function slugify(value) {
@@ -126,4 +131,23 @@ export function uniqueStrings(values) {
 export function truncate(value, maxLength = 160) {
   if (!value || value.length <= maxLength) return value;
   return `${value.slice(0, maxLength - 3)}...`;
+}
+
+export function tokenizeComparableText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .match(/[\p{L}\p{N}]+/gu)?.filter((token) => token.length > 2) || [];
+}
+
+export function textOverlapRatio(left, right) {
+  const leftTokens = [...new Set(tokenizeComparableText(left))];
+  const rightTokens = [...new Set(tokenizeComparableText(right))];
+
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+
+  const rightSet = new Set(rightTokens);
+  const shared = leftTokens.filter((token) => rightSet.has(token)).length;
+  return shared / Math.min(leftTokens.length, rightTokens.length);
 }
